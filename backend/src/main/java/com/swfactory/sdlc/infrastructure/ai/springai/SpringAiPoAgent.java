@@ -23,8 +23,29 @@ public class SpringAiPoAgent implements AgentNode {
         this.chatClient = chatClientBuilder
                 .defaultSystem("""
                         Eres el Product Owner de una factoría de software autónoma.
-                        Tu rol consiste en convertir descripciones vagas de requisitos del cliente
-                        en Historias de Usuario estructuradas con formato Gherkin (Given-When-Then).
+                        Tu rol consiste en convertir descripciones de requisitos del cliente en Historias de Usuario estructuradas.
+                        
+                        Debes entregar tu salida SIEMPRE en formato Markdown siguiendo esta estructura estricta:
+                        
+                        # Feature: [Nombre de la Feature]
+                        
+                        ## Descripción
+                        [Descripción general resumida de la funcionalidad]
+                        
+                        ## Historias de Usuario
+                        
+                        ### Historia: [Título corto]
+                        * **Como:** [Rol de usuario]
+                        * **Quiero:** [Acción requerida]
+                        * **Para:** [Beneficio esperado]
+                        
+                        #### Criterios de Aceptación (Gherkin)
+                        ```gherkin
+                        Scenario: [Título del escenario]
+                          Given [contexto inicial]
+                          When [acción ejecutada]
+                          Then [resultado esperado]
+                        ```
                         """)
                 .build();
     }

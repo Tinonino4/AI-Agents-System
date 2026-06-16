@@ -68,8 +68,24 @@ public class OrchestrateDevelopmentPhaseService implements OrchestrateDevelopmen
 
         agentTaskRepository.save(task);
 
+        // Imprimir traza de auditoría de entrada
+        log.info("\n================================================================================\n" +
+                 "[AUDIT] INICIANDO EJECUCIÓN DEL AGENTE: {}\n" +
+                 "[PROYECTO]: {} | [FASE]: {}\n" +
+                 "[INPUT DATA]:\n{}\n" +
+                 "================================================================================\n",
+                 agent.getRole(), context.getName(), context.getCurrentPhase(), inputData);
+
         // Ejecutar agente (escribe en filesystem / llama LLM)
         task = agent.execute(task, context);
+
+        // Imprimir traza de auditoría de salida
+        log.info("\n================================================================================\n" +
+                 "[AUDIT] FINALIZADA EJECUCIÓN DEL AGENTE: {}\n" +
+                 "[STATUS]: {}\n" +
+                 "[OUTPUT DATA]:\n{}\n" +
+                 "================================================================================\n",
+                 agent.getRole(), task.getStatus(), task.getOutputData());
 
         // ciclo de Autocuración (Self-Healing) si falla la verificación de QA
         if ("QA".equals(agent.getRole()) && "FAILED".equals(task.getStatus())) {
@@ -124,8 +140,9 @@ public class OrchestrateDevelopmentPhaseService implements OrchestrateDevelopmen
 
         log.info("Fase completada con éxito. Avanzando a la fase: {}", nextPhase);
 
-        // Si no hemos llegado al final, continuar orquestando
-        if (!"COMPLETED".equals(nextPhase) && !requiresHitl(nextPhase)) {
+        // Si no hemos llegado al final, continuar orquestando de manera secuencial.
+        // Las fases que requieran aprobación humana se detendrán en su propia ejecución tras invocar al agente correspondiente.
+        if (!"COMPLETED".equals(nextPhase)) {
             return orchestrate(context);
         }
 
