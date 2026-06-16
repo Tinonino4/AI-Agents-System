@@ -1,0 +1,103 @@
+package com.swfactory.sdlc.infrastructure.ai.springai;
+
+import com.swfactory.sdlc.domain.agent.AgentNode;
+import com.swfactory.sdlc.domain.model.AgentTask;
+import com.swfactory.sdlc.domain.model.ProjectContext;
+import com.swfactory.sdlc.domain.repository.WorkspaceRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.stereotype.Component;
+
+/**
+ * Adaptador de Infraestructura. Implementa el agente de Desarrollo Backend (BACKEND).
+ * Escribe el código de negocio directamente en el espacio de trabajo físico del proyecto.
+ */
+@Component
+public class SpringAiBackendAgent implements AgentNode {
+
+    private static final Logger log = LoggerFactory.getLogger(SpringAiBackendAgent.class);
+
+    private final ChatClient chatClient;
+    private final WorkspaceRepository workspaceRepository;
+
+    public SpringAiBackendAgent(ChatClient.Builder chatClientBuilder, WorkspaceRepository workspaceRepository) {
+        this.chatClient = chatClientBuilder
+                .defaultSystem("""
+                        Eres el Ingeniero de Software Backend de una factoría de software autónoma.
+                        Tu rol es escribir la implementación Java (Spring Boot) basada en la arquitectura provista.
+                        
+                        IMPORTANTE: Debes dar tu respuesta estructurada para escribir archivos usando este formato:
+                        === FILE: nombre_relativo_del_archivo ===
+                        [contenido del archivo]
+                        === END FILE ===
+                        """)
+                .build();
+        this.workspaceRepository = workspaceRepository;
+    }
+
+    @Override
+    public String getRole() {
+        return "BACKEND";
+    }
+
+    @Override
+    public AgentTask execute(AgentTask task, ProjectContext context) {
+        log.info("Agente Backend escribiendo código en el workspace para la tarea: {}", task.getTitle());
+        
+        String inputSpec = task.getInputData();
+        String promptInput = """
+                Basándote en la especificación técnica / feedback de errores:
+                %s
+                
+                Genera las clases necesarias de dominio y controladores.
+                Utiliza la estructura de delimitación para escribir los archivos.
+                """.formatted(inputSpec);
+
+        try {
+            String response = chatClient.prompt()
+                    .user(promptInput)
+                    .call()
+                    .content();
+
+            // Analizar respuesta y escribir los archivos en disco
+            parseAndWriteFiles(response);
+            
+            task.setOutputData(response);
+            log.info("Código backend generado y escrito en el espacio de trabajo.");
+        } catch (Exception e) {
+            log.error("Error en agente Backend", e);
+            task.setOutputData("Error al invocar LLM o escribir archivos: " + e.getMessage());
+        }
+
+        return task;
+    }
+
+    private void parseAndWriteFiles(String response) {
+        if (response == null || response.isEmpty()) return;
+
+        String[] blocks = response.split("=== FILE: ");
+        for (int i = 1; i < blocks.length; i++) {
+            String block = blocks[i];
+            int pathEnd = block.indexOf(" ===");
+            if (pathEnd == -1) {
+                pathEnd = block.indexOf("\n");
+            }
+            if (pathEnd == -1) continue;
+
+            String relativePath = block.substring(0, pathEnd).trim();
+            
+            int codeStart = block.indexOf("\n", pathEnd) + 1;
+            int codeEnd = block.indexOf("=== END FILE ===");
+            if (codeEnd == -1) {
+                codeEnd = block.length();
+            }
+
+            if (codeStart >= 0 && codeStart < codeEnd) {
+                String content = block.substring(codeStart, codeEnd).trim();
+                workspaceRepository.writeFile(relativePath, content);
+                log.info("Archivo escrito por BackendAgent en el workspace: {}", relativePath);
+            }
+        }
+    }
+}

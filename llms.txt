@@ -1,0 +1,12 @@
+# Mapa de Documentación Externa (llms.txt)
+
+Este archivo contiene enlaces directos a la documentación oficial de referencia del stack de desarrollo del proyecto para que los agentes puedan realizar consultas en tiempo real y asegurar sintaxis y APIs actualizadas.
+
+- [Documentación de Spring Boot 3.3.x](https://docs.spring.io/spring-boot/docs/current/reference/htmlsingle/)
+- [Documentación de Spring AI 1.x / 2.x Reference](https://docs.spring.io/spring-ai/reference/)
+- [Documentación de Vue.js 3 (Composition API)](https://vuejs.org/guide/introduction.html)
+- [Documentación de PostgreSQL 16+](https://www.postgresql.org/docs/)
+- [Documentación de PGVector para PostgreSQL](https://github.com/pgvector/pgvector)
+- [Documentación de Redis Core & Cache](https://redis.io/docs/)
+- [Guía de Arquitectura Hexagonal y DDD en Spring Boot](https://reflectoring.io/spring-hexagonal/)
+- [SpringDoc OpenAPI 3 UI integration](https://springdoc.org/)

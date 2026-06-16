@@ -1,0 +1,93 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: sdlc-agentic-system
+  
+  # Enable Virtual Threads natively in Spring Boot 4.1
+  threads:
+    virtual:
+      enabled: true
+
+  # Default active profiles
+  profiles:
+    active: gemini
+
+  # Base Spring AI mock credentials to prevent startup BeanCreationException
+  ai:
+    openai:
+      api-key: ${OPENAI_API_KEY:mock-openai-key}
+    google:
+      genai:
+        api-key: ${GOOGLE_GENAI_API_KEY:mock-gemini-key}
+
+  # Database configuration matching AGENTS.md
+  datasource:
+    url: jdbc:postgresql://localhost:5432/ai_agentic_system_db
+    username: postgres
+    password: postgrespassword
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+  # Redis configuration for short-term memory
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+# Configure CORS specifically for Actuator endpoints
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+      cors:
+        allowed-origins: "http://localhost:5173"
+        allowed-methods: "GET,POST,OPTIONS"
+        allowed-headers: "*"
+
+# Custom workspace configurations
+app:
+  workspace:
+    root: /home/tino/Projects/AI-Agents-System
+  # Global AI provider fallback
+  ai:
+    provider: gemini
+
+---
+# Configuration profile for Google Gemini (Vertex AI / Developer API)
+spring:
+  config:
+    activate:
+      on-profile: gemini
+  ai:
+    google:
+      genai:
+        project-id: ${GOOGLE_CLOUD_PROJECT:mock-project}
+        location: us-central1
+app:
+  ai:
+    provider: gemini
+
+---
+# Configuration profile for LM Studio (Local OpenAI-compatible LLM endpoint)
+spring:
+  config:
+    activate:
+      on-profile: lmstudio
+  ai:
+    openai:
+      options:
+        model: ${LM_STUDIO_MODEL:llama-3} # Default model
+      base-url: ${LM_STUDIO_URL:http://localhost:1234}
+app:
+  ai:
+    provider: lmstudio
