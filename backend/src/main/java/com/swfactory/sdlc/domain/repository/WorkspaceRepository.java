@@ -12,21 +12,21 @@ public interface WorkspaceRepository {
     /**
      * Escribe un archivo con el contenido especificado en el workspace.
      */
-    void writeFile(String path, String content);
+    void writeFile(String projectDir, String path, String content);
 
     /**
      * Lee el contenido de un archivo del workspace.
      */
-    String readFile(String path);
+    String readFile(String projectDir, String path);
 
     /**
      * Lista todos los archivos del workspace que coinciden con un patrón.
      */
-    Map<String, String> listFiles(String directoryPattern);
+    Map<String, String> listFiles(String projectDir, String directoryPattern);
 
     /**
      * Ejecuta los tests del proyecto en un entorno sandbox (o terminal local)
      * y retorna el resultado de la construcción y ejecución de pruebas.
      */
-    BuildResult executeBuildAndTest();
+    BuildResult executeBuildAndTest(String projectDir);
 }

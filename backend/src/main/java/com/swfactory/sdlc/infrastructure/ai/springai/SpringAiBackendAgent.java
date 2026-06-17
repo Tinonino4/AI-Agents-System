@@ -8,6 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Component;
+import java.util.Map;
 
 /**
  * Adaptador de Infraestructura. Implementa el agente de Desarrollo Backend (BACKEND).
@@ -43,16 +44,31 @@ public class SpringAiBackendAgent implements AgentNode {
 
     @Override
     public AgentTask execute(AgentTask task, ProjectContext context) {
+        String projectDir = getProjectDirName(context);
         log.info("Agente Backend escribiendo código en el workspace para la tarea: {}", task.getTitle());
         
         String inputSpec = task.getInputData();
+
+        // Obtener archivos existentes en el proyecto para dar contexto de código
+        Map<String, String> existingFiles = workspaceRepository.listFiles(projectDir, "");
+        StringBuilder filesContext = new StringBuilder();
+        if (!existingFiles.isEmpty()) {
+            filesContext.append("\n=== ARCHIVOS EXISTENTES EN EL PROYECTO (Desarrolla o modifica sobre estos archivos) ===\n");
+            existingFiles.forEach((path, content) -> {
+                filesContext.append("=== FILE: ").append(path).append(" ===\n")
+                        .append(content).append("\n=== END FILE ===\n\n");
+            });
+        }
+
         String promptInput = """
                 Basándote en la especificación técnica / feedback de errores:
                 %s
                 
-                Genera las clases necesarias de dominio y controladores.
+                %s
+                
+                Genera las clases necesarias de dominio, controladores o modifica los archivos existentes.
                 Utiliza la estructura de delimitación para escribir los archivos.
-                """.formatted(inputSpec);
+                """.formatted(inputSpec, filesContext.toString());
 
         try {
             String response = chatClient.prompt()
@@ -61,7 +77,7 @@ public class SpringAiBackendAgent implements AgentNode {
                     .content();
 
             // Analizar respuesta y escribir los archivos en disco
-            parseAndWriteFiles(response);
+            parseAndWriteFiles(response, projectDir);
             
             task.setOutputData(response);
             log.info("Código backend generado y escrito en el espacio de trabajo.");
@@ -73,7 +89,7 @@ public class SpringAiBackendAgent implements AgentNode {
         return task;
     }
 
-    private void parseAndWriteFiles(String response) {
+    private void parseAndWriteFiles(String response, String projectDir) {
         if (response == null || response.isEmpty()) return;
 
         String[] blocks = response.split("=== FILE: ");
@@ -95,9 +111,18 @@ public class SpringAiBackendAgent implements AgentNode {
 
             if (codeStart >= 0 && codeStart < codeEnd) {
                 String content = block.substring(codeStart, codeEnd).trim();
-                workspaceRepository.writeFile(relativePath, content);
-                log.info("Archivo escrito por BackendAgent en el workspace: {}", relativePath);
+                workspaceRepository.writeFile(projectDir, relativePath, content);
+                log.info("Archivo escrito por BackendAgent en el workspace ({}): {}", projectDir, relativePath);
             }
         }
+    }
+
+    private String getProjectDirName(ProjectContext context) {
+        if (context == null || context.getName() == null || context.getName().isBlank()) {
+            return "default-project";
+        }
+        return context.getName().toLowerCase()
+                .replaceAll("\\s+", "-")
+                .replaceAll("[^a-z0-9_-]", "");
     }
 }

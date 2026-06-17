@@ -9,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Component;
+import java.util.Map;
 
 /**
  * Adaptador de Infraestructura. Implementa el agente de QA (Calidad / Adversario).
@@ -44,15 +45,29 @@ public class SpringAiQaAgent implements AgentNode {
 
     @Override
     public AgentTask execute(AgentTask task, ProjectContext context) {
+        String projectDir = getProjectDirName(context);
         log.info("Agente QA generando pruebas unitarias en el workspace para la tarea: {}", task.getTitle());
         String code = context.getPhaseOutputs().getOrDefault("DEVELOPMENT", "No hay código backend.");
 
+        // Obtener archivos existentes en el proyecto para dar contexto de pruebas
+        Map<String, String> existingFiles = workspaceRepository.listFiles(projectDir, "");
+        StringBuilder filesContext = new StringBuilder();
+        if (!existingFiles.isEmpty()) {
+            filesContext.append("\n=== ARCHIVOS EXISTENTES EN EL PROYECTO (Desarrollo y Tests previos) ===\n");
+            existingFiles.forEach((path, content) -> {
+                filesContext.append("=== FILE: ").append(path).append(" ===\n")
+                        .append(content).append("\n=== END FILE ===\n\n");
+            });
+        }
+
         String promptInput = """
-                Analiza el código backend e implementa la correspondiente clase de pruebas unitarias:
+                Analiza el código backend e implementa o actualiza la correspondiente clase de pruebas unitarias:
                 %s
                 
-                Utiliza la estructura de delimitación para escribir los archivos.
-                """.formatted(code);
+                %s
+                
+                Utiliza la estructura de delimitación para escribir los archivos de pruebas.
+                """.formatted(code, filesContext.toString());
 
         try {
             String response = chatClient.prompt()
@@ -61,10 +76,10 @@ public class SpringAiQaAgent implements AgentNode {
                     .content();
 
             // Escribir pruebas en el workspace
-            parseAndWriteFiles(response);
+            parseAndWriteFiles(response, projectDir);
 
             // Ejecutar maven test en el sandbox/sistema de archivos local
-            BuildResult buildResult = workspaceRepository.executeBuildAndTest();
+            BuildResult buildResult = workspaceRepository.executeBuildAndTest(projectDir);
 
             if (buildResult.success()) {
                 log.info("Verificación de QA: Compilación y Pruebas exitosas (BUILD SUCCESS).");
@@ -85,7 +100,7 @@ public class SpringAiQaAgent implements AgentNode {
         return task;
     }
 
-    private void parseAndWriteFiles(String response) {
+    private void parseAndWriteFiles(String response, String projectDir) {
         if (response == null || response.isEmpty()) return;
 
         String[] blocks = response.split("=== FILE: ");
@@ -107,9 +122,18 @@ public class SpringAiQaAgent implements AgentNode {
 
             if (codeStart >= 0 && codeStart < codeEnd) {
                 String content = block.substring(codeStart, codeEnd).trim();
-                workspaceRepository.writeFile(relativePath, content);
-                log.info("Archivo escrito por QaAgent en el workspace: {}", relativePath);
+                workspaceRepository.writeFile(projectDir, relativePath, content);
+                log.info("Archivo escrito por QaAgent en el workspace ({}): {}", projectDir, relativePath);
             }
         }
+    }
+
+    private String getProjectDirName(ProjectContext context) {
+        if (context == null || context.getName() == null || context.getName().isBlank()) {
+            return "default-project";
+        }
+        return context.getName().toLowerCase()
+                .replaceAll("\\s+", "-")
+                .replaceAll("[^a-z0-9_-]", "");
     }
 }

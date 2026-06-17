@@ -3,10 +3,12 @@ package com.swfactory.sdlc.infrastructure.ai.springai;
 import com.swfactory.sdlc.domain.agent.AgentNode;
 import com.swfactory.sdlc.domain.model.AgentTask;
 import com.swfactory.sdlc.domain.model.ProjectContext;
+import com.swfactory.sdlc.domain.repository.WorkspaceRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Component;
+import java.util.Map;
 
 /**
  * Adaptador de Infraestructura. Implementa el agente de Arquitectura Técnica (Architect)
@@ -18,12 +20,14 @@ public class SpringAiArchitectAgent implements AgentNode {
     private static final Logger log = LoggerFactory.getLogger(SpringAiArchitectAgent.class);
 
     private final ChatClient chatClient;
+    private final WorkspaceRepository workspaceRepository;
 
     /**
-     * Constructor que inyecta el constructor del ChatClient.
+     * Constructor que inyecta el constructor del ChatClient y el repositorio del Workspace.
      * Define el System Prompt inicial de la personalidad del Arquitecto Técnico.
      */
-    public SpringAiArchitectAgent(ChatClient.Builder chatClientBuilder) {
+    public SpringAiArchitectAgent(ChatClient.Builder chatClientBuilder, WorkspaceRepository workspaceRepository) {
+        this.workspaceRepository = workspaceRepository;
         this.chatClient = chatClientBuilder
                 .defaultSystem("""
                         Eres el Agente Arquitecto Técnico de una factoría de software autónoma.
@@ -45,8 +49,20 @@ public class SpringAiArchitectAgent implements AgentNode {
     @Override
     public AgentTask execute(AgentTask task, ProjectContext context) {
         log.info("Agente Arquitecto Técnico ejecutando tarea: {}", task.getTitle());
+        String projectDir = getProjectDirName(context);
 
         String inputStories = context.getPhaseOutputs().getOrDefault("ANALYSIS", "No hay especificación de requisitos disponible.");
+
+        // Obtener archivos existentes en el proyecto para dar contexto de arquitectura
+        Map<String, String> existingFiles = workspaceRepository.listFiles(projectDir, "");
+        StringBuilder filesContext = new StringBuilder();
+        if (!existingFiles.isEmpty()) {
+            filesContext.append("\n=== ARCHIVOS EXISTENTES EN EL PROYECTO (Considéralos al definir la arquitectura) ===\n");
+            existingFiles.forEach((path, content) -> {
+                filesContext.append("=== FILE: ").append(path).append(" ===\n")
+                        .append(content).append("\n=== END FILE ===\n\n");
+            });
+        }
 
         String promptInput = """
                 Analiza las siguientes historias de usuario en Gherkin y genera la especificación
@@ -57,7 +73,12 @@ public class SpringAiArchitectAgent implements AgentNode {
                 
                 Requisitos a analizar:
                 %s
-                """.formatted(inputStories);
+                
+                %s
+                
+                Si el proyecto ya tiene una arquitectura establecida (ver archivos existentes),
+                propon los cambios o adiciones necesarias sobre la estructura actual en lugar de sobrescribirla por completo.
+                """.formatted(inputStories, filesContext.toString());
 
         try {
             // Invocar el LLM usando la API fluent de ChatClient de Spring AI
@@ -74,5 +95,14 @@ public class SpringAiArchitectAgent implements AgentNode {
         }
 
         return task;
+    }
+
+    private String getProjectDirName(ProjectContext context) {
+        if (context == null || context.getName() == null || context.getName().isBlank()) {
+            return "default-project";
+        }
+        return context.getName().toLowerCase()
+                .replaceAll("\\s+", "-")
+                .replaceAll("[^a-z0-9_-]", "");
     }
 }

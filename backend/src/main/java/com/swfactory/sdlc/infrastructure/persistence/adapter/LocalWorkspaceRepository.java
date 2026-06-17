@@ -32,13 +32,17 @@ public class LocalWorkspaceRepository implements WorkspaceRepository {
         this.workspaceRoot = Paths.get(workspaceRootPath);
     }
 
+    private Path getProjectRoot(String projectDir) {
+        return workspaceRoot.resolve("projects").resolve(projectDir);
+    }
+
     @Override
-    public void writeFile(String relativePath, String content) {
-        Path targetPath = workspaceRoot.resolve(relativePath);
+    public void writeFile(String projectDir, String relativePath, String content) {
+        Path targetPath = getProjectRoot(projectDir).resolve(relativePath);
         try {
             Files.createDirectories(targetPath.getParent());
             Files.writeString(targetPath, content);
-            log.info("Archivo escrito en el espacio de trabajo: {}", targetPath);
+            log.info("Archivo escrito en el espacio de trabajo del proyecto ({}): {}", projectDir, targetPath);
         } catch (IOException e) {
             log.error("Error al escribir archivo en el workspace", e);
             throw new RuntimeException("Error al escribir archivo: " + relativePath, e);
@@ -46,8 +50,8 @@ public class LocalWorkspaceRepository implements WorkspaceRepository {
     }
 
     @Override
-    public String readFile(String relativePath) {
-        Path targetPath = workspaceRoot.resolve(relativePath);
+    public String readFile(String projectDir, String relativePath) {
+        Path targetPath = getProjectRoot(projectDir).resolve(relativePath);
         try {
             if (!Files.exists(targetPath)) {
                 return "";
@@ -60,9 +64,10 @@ public class LocalWorkspaceRepository implements WorkspaceRepository {
     }
 
     @Override
-    public Map<String, String> listFiles(String directoryPattern) {
+    public Map<String, String> listFiles(String projectDir, String directoryPattern) {
         Map<String, String> files = new HashMap<>();
-        Path searchDir = workspaceRoot.resolve(directoryPattern);
+        Path root = getProjectRoot(projectDir);
+        Path searchDir = root.resolve(directoryPattern);
         if (!Files.exists(searchDir) || !Files.isDirectory(searchDir)) {
             return files;
         }
@@ -70,7 +75,7 @@ public class LocalWorkspaceRepository implements WorkspaceRepository {
         try (Stream<Path> stream = Files.walk(searchDir)) {
             stream.filter(Files::isRegularFile).forEach(path -> {
                 try {
-                    String relative = workspaceRoot.relativize(path).toString();
+                    String relative = root.relativize(path).toString();
                     String content = Files.readString(path);
                     files.put(relative, content);
                 } catch (IOException e) {
@@ -84,13 +89,13 @@ public class LocalWorkspaceRepository implements WorkspaceRepository {
     }
 
     @Override
-    public BuildResult executeBuildAndTest() {
-        log.info("Ejecutando compilación y pruebas deterministas (mvn clean test)...");
+    public BuildResult executeBuildAndTest(String projectDir) {
+        log.info("Ejecutando compilación y pruebas deterministas (mvn clean test) en el proyecto {}...", projectDir);
         StringBuilder logBuilder = new StringBuilder();
         try {
-            Path backendDir = workspaceRoot.resolve("backend");
+            Path projectPath = getProjectRoot(projectDir);
             ProcessBuilder builder = new ProcessBuilder();
-            builder.directory(backendDir.toFile());
+            builder.directory(projectPath.toFile());
             
             builder.command("mvn", "clean", "test");
             builder.redirectErrorStream(true); // Redireccionar stderr a stdout para capturar todo
