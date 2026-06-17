@@ -922,6 +922,8 @@ onMounted(async () => {
   flex-direction: column;
   padding: 24px;
   height: calc(100vh - 160px);
+  min-height: 0;
+  overflow: hidden;
 }
 
 .panel-header {
@@ -1306,6 +1308,8 @@ onMounted(async () => {
   font-size: 0.8rem;
   color: #cbd5e1;
   flex-grow: 1;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .hitl-actions {
@@ -1537,6 +1541,8 @@ onMounted(async () => {
   font-size: 0.75rem;
   color: #e2e8f0;
   max-height: 180px;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .project-select-dropdown {
