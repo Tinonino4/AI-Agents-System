@@ -24,10 +24,10 @@ public class AgentTaskEntity {
 
     private String status;
 
-    @Column(length = 65535)
+    @Column(columnDefinition = "TEXT")
     private String inputData;
 
-    @Column(length = 65535)
+    @Column(columnDefinition = "TEXT")
     private String outputData;
 
     @Column(length = 2000)

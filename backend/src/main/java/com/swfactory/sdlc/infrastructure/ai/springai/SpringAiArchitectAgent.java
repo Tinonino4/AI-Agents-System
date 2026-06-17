@@ -31,6 +31,8 @@ public class SpringAiArchitectAgent implements AgentNode {
                         y contratos OpenAPI a partir de las Historias de Usuario provistas en formato Gherkin.
                         Tus decisiones deben seguir buenas prácticas como DDD, Arquitectura Hexagonal y seguridad.
                         Entrega siempre salidas altamente detalladas y estructuradas en Markdown.
+                        
+                        CRÍTICO: Al generar tablas en Markdown, detalla únicamente las filas con datos reales. Evita por completo generar filas vacías repetitivas o bucles interminables de tuberías ('|'). Finaliza la respuesta de manera limpia y concisa en cuanto la documentación esté completa.
                         """)
                 .build();
     }

@@ -28,7 +28,7 @@ public class ProjectContextEntity {
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "project_phase_outputs", joinColumns = @JoinColumn(name = "project_context_id"))
     @MapKeyColumn(name = "phase_name")
-    @Column(name = "output_data", length = 65535)
+    @Column(name = "output_data", columnDefinition = "TEXT")
     private Map<String, String> phaseOutputs;
 
     private int rejectionCount;
