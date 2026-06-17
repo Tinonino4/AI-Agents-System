@@ -37,3 +37,6 @@ Thumbs.db
 secrets.properties
 *.key
 *.pem
+
+# Generated Projects Data
+projects/
