@@ -1,7 +1,9 @@
 package com.swfactory.sdlc.infrastructure.rest;
 
 import com.swfactory.sdlc.application.usecase.OrchestrateDevelopmentPhaseUseCase;
+import com.swfactory.sdlc.domain.model.AgentTask;
 import com.swfactory.sdlc.domain.model.ProjectContext;
+import com.swfactory.sdlc.domain.repository.AgentTaskRepository;
 import com.swfactory.sdlc.domain.repository.ProjectContextRepository;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -10,6 +12,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -24,11 +27,14 @@ public class ProjectController {
 
     private final OrchestrateDevelopmentPhaseUseCase orchestrateUseCase;
     private final ProjectContextRepository projectRepository;
+    private final AgentTaskRepository agentTaskRepository;
 
     public ProjectController(OrchestrateDevelopmentPhaseUseCase orchestrateUseCase,
-                             ProjectContextRepository projectRepository) {
+                             ProjectContextRepository projectRepository,
+                             AgentTaskRepository agentTaskRepository) {
         this.orchestrateUseCase = orchestrateUseCase;
         this.projectRepository = projectRepository;
+        this.agentTaskRepository = agentTaskRepository;
     }
 
     /**
@@ -66,5 +72,26 @@ public class ProjectController {
         // Disparar la tubería agéntica (comienza por la fase ANALYSIS invocando a @po-agent)
         ProjectContext result = orchestrateUseCase.orchestrate(context);
         return ResponseEntity.ok(result);
+    }
+
+    /**
+     * Endpoint para obtener el contexto de un proyecto por su ID.
+     */
+    @GetMapping("/{projectId}")
+    @Operation(summary = "Obtener el contexto del proyecto por su ID")
+    public ResponseEntity<ProjectContext> getProjectById(@PathVariable UUID projectId) {
+        return projectRepository.findById(projectId)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    /**
+     * Endpoint para obtener todas las tareas asociadas a un proyecto.
+     */
+    @GetMapping("/{projectId}/tasks")
+    @Operation(summary = "Obtener todas las tareas asociadas a un proyecto")
+    public ResponseEntity<List<AgentTask>> getProjectTasks(@PathVariable UUID projectId) {
+        List<AgentTask> tasks = agentTaskRepository.findByProjectId(projectId);
+        return ResponseEntity.ok(tasks);
     }
 }

@@ -1,5 +1,6 @@
 package com.swfactory.sdlc.infrastructure.persistence.adapter;
 
+import com.swfactory.sdlc.domain.model.BuildResult;
 import com.swfactory.sdlc.domain.repository.WorkspaceRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -83,30 +84,33 @@ public class LocalWorkspaceRepository implements WorkspaceRepository {
     }
 
     @Override
-    public boolean executeBuildAndTest() {
+    public BuildResult executeBuildAndTest() {
         log.info("Ejecutando compilación y pruebas deterministas (mvn clean test)...");
+        StringBuilder logBuilder = new StringBuilder();
         try {
             Path backendDir = workspaceRoot.resolve("backend");
             ProcessBuilder builder = new ProcessBuilder();
             builder.directory(backendDir.toFile());
             
             builder.command("mvn", "clean", "test");
+            builder.redirectErrorStream(true); // Redireccionar stderr a stdout para capturar todo
             Process process = builder.start();
 
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
+                    logBuilder.append(line).append("\n");
                     log.debug("[MVN LOG]: {}", line);
                 }
             }
 
             int exitCode = process.waitFor();
             log.info("Compilación finalizada con código de salida: {}", exitCode);
-            return exitCode == 0;
+            return new BuildResult(exitCode == 0, logBuilder.toString());
         } catch (IOException | InterruptedException e) {
             log.error("Error al ejecutar proceso de verificación de build", e);
             Thread.currentThread().interrupt();
-            return false;
+            return new BuildResult(false, "Error al iniciar proceso de build: " + e.getMessage() + "\n" + logBuilder.toString());
         }
     }
 }

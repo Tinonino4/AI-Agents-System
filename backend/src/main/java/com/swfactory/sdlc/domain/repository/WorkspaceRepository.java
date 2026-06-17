@@ -1,5 +1,6 @@
 package com.swfactory.sdlc.domain.repository;
 
+import com.swfactory.sdlc.domain.model.BuildResult;
 import java.util.Map;
 
 /**
@@ -25,7 +26,7 @@ public interface WorkspaceRepository {
 
     /**
      * Ejecuta los tests del proyecto en un entorno sandbox (o terminal local)
-     * y retorna true si compila y pasa todas las pruebas con éxito.
+     * y retorna el resultado de la construcción y ejecución de pruebas.
      */
-    boolean executeBuildAndTest();
+    BuildResult executeBuildAndTest();
 }

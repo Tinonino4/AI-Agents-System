@@ -6,8 +6,10 @@ import com.swfactory.sdlc.infrastructure.persistence.entity.AgentTaskEntity;
 import com.swfactory.sdlc.infrastructure.persistence.repository.SpringDataAgentTaskRepository;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * Adaptador de persistencia para AgentTask. Implementa el puerto del dominio
@@ -32,6 +34,13 @@ public class AgentTaskRepositoryAdapter implements AgentTaskRepository {
     @Override
     public Optional<AgentTask> findById(UUID id) {
         return springDataRepository.findById(id).map(this::toDomain);
+    }
+
+    @Override
+    public List<AgentTask> findByProjectId(UUID projectId) {
+        return springDataRepository.findByProjectId(projectId).stream()
+                .map(this::toDomain)
+                .collect(Collectors.toList());
     }
 
     private AgentTaskEntity toEntity(AgentTask domain) {

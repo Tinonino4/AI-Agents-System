@@ -80,6 +80,11 @@ const phases = [
 // Feedback field for rejections
 const reviewerFeedback = ref('')
 
+// Tabs and Auditor state
+const activeTab = ref('hitl')
+const selectedAgentForAudit = ref(null)
+const selectedAgentTasks = ref([])
+
 // Utility functions
 const addLog = (message, type = 'info') => {
   const time = new Date().toLocaleTimeString()
@@ -103,8 +108,144 @@ const resetPipeline = () => {
     a.output = ''
   })
   activeTask.value = null
+  selectedAgentForAudit.value = null
+  selectedAgentTasks.value = []
+  activeTab.value = 'hitl'
   logs.value = []
   addLog('Sistema agéntico reiniciado. Listo para iniciar nueva iteración.', 'info')
+}
+
+// Helper to resolve phase for a given role
+const getPhaseForRole = (role) => {
+  switch (role) {
+    case 'PRODUCT_OWNER': return 'ANALYSIS'
+    case 'ARCHITECT': return 'ARCHITECTURE'
+    case 'BACKEND': return 'DEVELOPMENT'
+    case 'QA': return 'TESTING'
+    case 'SRE': return 'DEPLOYMENT'
+    default: return 'COMPLETED'
+  }
+}
+
+// Helper to check if a phase requires human review
+const requiresHitlPhase = (phase) => {
+  return phase === 'ARCHITECTURE' || phase === 'DEPLOYMENT'
+}
+
+// Update agent statuses based on latest project context
+const updateAgentStatusesFromContext = (context) => {
+  const phasesOrder = ['ANALYSIS', 'ARCHITECTURE', 'DEVELOPMENT', 'TESTING', 'DEPLOYMENT', 'COMPLETED']
+  const currentIndex = phasesOrder.indexOf(context.currentPhase)
+  
+  agents.forEach(agent => {
+    const agentPhase = getPhaseForRole(agent.role)
+    const agentIndex = phasesOrder.indexOf(agentPhase)
+    
+    if (agentIndex < currentIndex) {
+      agent.status = 'COMPLETED'
+      agent.output = context.phaseOutputs[agentPhase] || ''
+    } else if (agentIndex === currentIndex) {
+      if (requiresHitlPhase(agentPhase)) {
+        agent.status = 'WAITING_FOR_HITL'
+        agent.output = context.phaseOutputs[agentPhase] || ''
+      } else {
+        agent.status = 'IN_PROGRESS'
+        agent.output = ''
+      }
+    } else {
+      agent.status = 'IDLE'
+      agent.output = ''
+    }
+  })
+}
+
+// Load active tasks from the backend for HITL review
+const loadActiveTask = async (context) => {
+  try {
+    const res = await fetch(`${backendUrl.value}/api/v1/projects/${context.id}/tasks`)
+    if (res.ok) {
+      const allTasks = await res.json()
+      const pendingTask = allTasks.find(t => t.status === 'WAITING_FOR_HITL')
+      if (pendingTask) {
+        activeTask.value = {
+          id: pendingTask.id,
+          title: pendingTask.title,
+          description: pendingTask.description,
+          outputData: pendingTask.outputData,
+          role: pendingTask.agentRole
+        }
+        activeTab.value = 'hitl'
+        
+        const agent = agents.find(a => a.role === pendingTask.agentRole)
+        if (agent) {
+          agent.status = 'WAITING_FOR_HITL'
+          agent.output = pendingTask.outputData
+        }
+      } else {
+        activeTask.value = null
+      }
+    }
+  } catch (err) {
+    console.error("Error loading active task", err)
+  }
+}
+
+// Refresh project state and sync with the backend
+const refreshProjectState = async () => {
+  if (connectionMode.value !== 'api' || !project.id) return
+  
+  try {
+    const res = await fetch(`${backendUrl.value}/api/v1/projects/${project.id}`)
+    if (res.ok) {
+      const context = await res.json()
+      
+      project.currentPhase = context.currentPhase
+      project.phaseOutputs.ANALYSIS = context.phaseOutputs.ANALYSIS || ''
+      project.phaseOutputs.ARCHITECTURE = context.phaseOutputs.ARCHITECTURE || ''
+      project.phaseOutputs.DEVELOPMENT = context.phaseOutputs.DEVELOPMENT || ''
+      project.phaseOutputs.TESTING = context.phaseOutputs.TESTING || ''
+      project.phaseOutputs.DEPLOYMENT = context.phaseOutputs.DEPLOYMENT || ''
+      
+      updateAgentStatusesFromContext(context)
+      await loadActiveTask(context)
+    }
+  } catch (err) {
+    addLog(`Error al sincronizar con el backend: ${err.message}`, 'error')
+  }
+}
+
+// Fetch tasks for audit logs inspection of a selected agent
+const auditAgent = async (agent) => {
+  selectedAgentForAudit.value = agent
+  selectedAgentTasks.value = []
+  activeTab.value = 'audit'
+  
+  if (connectionMode.value === 'api' && project.id) {
+    try {
+      const res = await fetch(`${backendUrl.value}/api/v1/projects/${project.id}/tasks`)
+      if (res.ok) {
+        const allTasks = await res.json()
+        selectedAgentTasks.value = allTasks.filter(t => t.agentRole === agent.role)
+      }
+    } catch (err) {
+      addLog(`Error al cargar historial de tareas de ${agent.name}: ${err.message}`, 'error')
+    }
+  } else {
+    // Simulation fallback
+    if (agent.output || agent.status === 'IN_PROGRESS') {
+      selectedAgentTasks.value = [
+        {
+          id: 'sim-task-' + agent.role,
+          agentRole: agent.role,
+          title: `Generar salida para la fase ${getPhaseForRole(agent.role)}`,
+          description: `Procesamiento simulado en entorno local.`,
+          status: agent.status,
+          inputData: 'Especificaciones de requisitos e inputs anteriores.',
+          outputData: agent.output || 'Procesando en segundo plano...'
+        }
+      ]
+    }
+  }
 }
 
 // Unified trigger entrypoint
@@ -142,28 +283,7 @@ const startApiPipeline = async () => {
     project.id = context.id
     addLog('Pipeline procesado por la factoría del backend.', 'success')
 
-    // Actualizar salidas en frontend con los artefactos de la API
-    if (context.phaseOutputs.ANALYSIS) {
-      project.phaseOutputs.ANALYSIS = context.phaseOutputs.ANALYSIS
-      updateAgentStatus('PRODUCT_OWNER', 'COMPLETED', context.phaseOutputs.ANALYSIS)
-      addLog('Requisitos generados por el Agente PO.', 'info')
-    }
-
-    // Comprobar si quedó en espera de revisión (Arquitectura usualmente requiere HITL)
-    project.currentPhase = context.currentPhase
-    if (context.currentPhase === 'ARCHITECTURE') {
-      updateAgentStatus('ARCHITECT', 'WAITING_FOR_HITL', context.phaseOutputs.ARCHITECTURE || 'Generando...')
-      addLog('Agente Arquitecto Técnico requiere aprobación manual (HITL).', 'warning')
-      
-      // Intentar obtener la tarea pendiente del backend (o simular la carga de tarea para aprobación)
-      activeTask.value = {
-        id: 'real-task-from-api-check', // En producción se consulta endpoint GET /api/v1/tasks/pending
-        title: 'Aprobar especificación técnica',
-        description: 'Valida la propuesta de Bounded Contexts y OpenAPI generada por el Arquitecto Técnico.',
-        outputData: context.phaseOutputs.ARCHITECTURE || 'Generando borrador...',
-        role: 'ARCHITECT'
-      }
-    }
+    await refreshProjectState()
 
   } catch (err) {
     addLog(`Error al conectar con la API: ${err.message}`, 'error')
@@ -256,22 +376,24 @@ const approveTask = async () => {
       })
       if (response.ok) {
         addLog('Aprobación sincronizada con el backend Spring Boot.', 'success')
+        await refreshProjectState()
       } else {
         addLog('Fallo al sincronizar aprobación con el servidor backend.', 'error')
       }
     } catch (err) {
       addLog(`Error de red con backend: ${err.message}`, 'error')
     }
-  }
-
-  updateAgentStatus(role, 'COMPLETED')
-  activeTask.value = null
-  
-  if (role === 'ARCHITECT') {
-    runDevelopmentPhase()
-  } else if (role === 'SRE') {
-    project.currentPhase = 'COMPLETED'
-    addLog('¡Ciclo SDLC Multi-Agente finalizado con éxito!', 'success')
+  } else {
+    // Modo simulación
+    updateAgentStatus(role, 'COMPLETED')
+    activeTask.value = null
+    
+    if (role === 'ARCHITECT') {
+      runDevelopmentPhase()
+    } else if (role === 'SRE') {
+      project.currentPhase = 'COMPLETED'
+      addLog('¡Ciclo SDLC Multi-Agente finalizado con éxito!', 'success')
+    }
   }
 }
 
@@ -295,15 +417,18 @@ const rejectTask = async () => {
       })
       if (response.ok) {
         addLog('Rechazo y comentarios enviados al backend.', 'info')
+        reviewerFeedback.value = ''
+        await refreshProjectState()
       }
     } catch (err) {
       addLog(`Error de red al enviar rechazo: ${err.message}`, 'error')
     }
+  } else {
+    // Modo simulación
+    updateAgentStatus(role, 'REJECTED')
+    activeTask.value = null
+    reviewerFeedback.value = ''
   }
-
-  updateAgentStatus(role, 'REJECTED')
-  activeTask.value = null
-  reviewerFeedback.value = ''
 }
 
 // Simulated backend + QA phases after architectural approval
@@ -501,8 +626,9 @@ onMounted(() => {
           <div 
             v-for="agent in agents" 
             :key="agent.role"
-            class="agent-card"
-            :class="agent.status.toLowerCase()"
+            class="agent-card clickable"
+            :class="[agent.status.toLowerCase(), { 'selected-audit': selectedAgentForAudit?.role === agent.role }]"
+            @click="auditAgent(agent)"
           >
             <div class="agent-avatar">{{ agent.avatar }}</div>
             <div class="agent-info">
@@ -541,58 +667,126 @@ onMounted(() => {
         </div>
       </section>
 
-      <!-- RIGHT PANEL: Human-in-the-Loop Review Pane -->
+      <!-- RIGHT PANEL: Human-in-the-Loop & Audit Pane -->
       <section 
         class="grid-panel glass-panel hitl-panel"
-        :class="{ 'attention': activeTask }"
+        :class="{ 'attention': activeTask && activeTab === 'hitl' }"
       >
-        <div class="panel-header">
-          <span class="icon">👤</span>
-          <h2>Aprobación Humana (HITL)</h2>
+        <!-- Tab Headers -->
+        <div class="tab-headers">
+          <button 
+            class="tab-btn" 
+            :class="{ active: activeTab === 'hitl', 'has-task': activeTask }"
+            @click="activeTab = 'hitl'"
+          >
+            👤 HITL <span v-if="activeTask" class="notification-dot"></span>
+          </button>
+          <button 
+            class="tab-btn" 
+            :class="{ active: activeTab === 'audit' }"
+            @click="activeTab = 'audit'"
+          >
+            🔍 Auditoría
+          </button>
         </div>
 
-        <!-- No task waiting -->
-        <div v-if="!activeTask" class="no-task-placeholder">
-          <div class="relax-icon">🛡️</div>
-          <h3>Todo en orden</h3>
-          <p>No hay tareas pendientes en espera de validación. Los agentes están procesando o inactivos.</p>
-        </div>
-
-        <!-- Task waiting for approval -->
-        <div v-else class="active-task-container">
-          <div class="task-alert">
-            <span class="pulse-bullet warning"></span>
-            <h3>Revisión Requerida</h3>
-          </div>
-
-          <div class="task-info">
-            <h4>{{ activeTask.title }}</h4>
-            <p>{{ activeTask.description }}</p>
-          </div>
-
-          <div class="code-viewer">
-            <div class="code-header">
-              <span>Artefacto de Salida (Markdown / Code)</span>
+        <div class="tab-content">
+          <!-- HITL TAB -->
+          <div v-if="activeTab === 'hitl'" class="tab-pane">
+            <!-- No task waiting -->
+            <div v-if="!activeTask" class="no-task-placeholder">
+              <div class="relax-icon">🛡️</div>
+              <h3>Todo en orden</h3>
+              <p>No hay tareas pendientes en espera de validación. Los agentes están procesando o inactivos.</p>
             </div>
-            <pre><code>{{ activeTask.outputData }}</code></pre>
+
+            <!-- Task waiting for approval -->
+            <div v-else class="active-task-container">
+              <div class="task-alert">
+                <span class="pulse-bullet warning"></span>
+                <h3>Revisión Requerida</h3>
+              </div>
+
+              <div class="task-info">
+                <h4>{{ activeTask.title }}</h4>
+                <p>{{ activeTask.description }}</p>
+              </div>
+
+              <div class="code-viewer">
+                <div class="code-header">
+                  <span>Artefacto de Salida (Markdown / Code)</span>
+                </div>
+                <pre><code>{{ activeTask.outputData }}</code></pre>
+              </div>
+
+              <!-- Actions -->
+              <div class="hitl-actions">
+                <button @click="approveTask" class="btn btn-success approve-btn">
+                  ✅ Aprobar & Continuar
+                </button>
+
+                <div class="rejection-box">
+                  <textarea 
+                    v-model="reviewerFeedback" 
+                    placeholder="Indica el motivo del rechazo para que el agente lo corrija..."
+                    rows="3"
+                    class="feedback-textarea"
+                  ></textarea>
+                  <button @click="rejectTask" class="btn btn-error reject-btn">
+                    ❌ Rechazar Entrega
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
 
-          <!-- Actions -->
-          <div class="hitl-actions">
-            <button @click="approveTask" class="btn btn-success approve-btn">
-              ✅ Aprobar & Continuar
-            </button>
+          <!-- AUDIT TAB -->
+          <div v-else-if="activeTab === 'audit'" class="tab-pane">
+            <!-- No agent selected -->
+            <div v-if="!selectedAgentForAudit" class="no-task-placeholder">
+              <div class="relax-icon">🔍</div>
+              <h3>Auditoría</h3>
+              <p>Haz clic en cualquier tarjeta de agente en el panel central para inspeccionar sus tareas y logs.</p>
+            </div>
+            <!-- Agent Selected -->
+            <div v-else class="audit-inspector-container">
+              <div class="inspector-header">
+                <span class="agent-avatar">{{ selectedAgentForAudit.avatar }}</span>
+                <div>
+                  <h4>{{ selectedAgentForAudit.name }}</h4>
+                  <p class="role-desc">{{ selectedAgentForAudit.description }}</p>
+                </div>
+              </div>
 
-            <div class="rejection-box">
-              <textarea 
-                v-model="reviewerFeedback" 
-                placeholder="Indica el motivo del rechazo para que el agente lo corrija..."
-                rows="3"
-                class="feedback-textarea"
-              ></textarea>
-              <button @click="rejectTask" class="btn btn-error reject-btn">
-                ❌ Rechazar Entrega
-              </button>
+              <!-- List of tasks -->
+              <div class="audit-tasks-list">
+                <div v-if="selectedAgentTasks.length === 0" class="no-tasks-msg">
+                  No hay tareas registradas para este agente todavía.
+                </div>
+                <div 
+                  v-for="task in selectedAgentTasks" 
+                  :key="task.id" 
+                  class="audit-task-card"
+                  :class="task.status.toLowerCase()"
+                >
+                  <div class="task-card-header">
+                    <h5>{{ task.title }}</h5>
+                    <span class="status-badge" :class="task.status.toLowerCase()">{{ task.status }}</span>
+                  </div>
+                  <p class="task-desc">{{ task.description }}</p>
+
+                  <div class="task-io-grid">
+                    <div class="io-section" v-if="task.inputData">
+                      <strong>Entrada (Input):</strong>
+                      <pre><code>{{ task.inputData }}</code></pre>
+                    </div>
+                    <div class="io-section" v-if="task.outputData">
+                      <strong>Salida (Output):</strong>
+                      <pre><code>{{ task.outputData }}</code></pre>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -1103,5 +1297,190 @@ onMounted(() => {
 
 .reject-btn:hover {
   box-shadow: 0 0 15px var(--color-error);
+}
+
+/* Auditor & Tabs Styles */
+.agent-card.clickable {
+  cursor: pointer;
+  transition: transform 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.agent-card.clickable:hover {
+  transform: translateY(-2px);
+  border-color: rgba(56, 189, 248, 0.4);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.agent-card.selected-audit {
+  border-color: var(--color-primary);
+  background: rgba(56, 189, 248, 0.1) !important;
+  box-shadow: 0 0 15px rgba(56, 189, 248, 0.15);
+}
+
+/* Tabs headers */
+.tab-headers {
+  display: flex;
+  border-bottom: 1px solid var(--panel-border);
+  margin-bottom: 20px;
+  gap: 10px;
+}
+
+.tab-btn {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--color-text-muted);
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.tab-btn:hover {
+  color: #fff;
+}
+
+.tab-btn.active {
+  color: var(--color-primary);
+  border-bottom-color: var(--color-primary);
+}
+
+.tab-btn.has-task .notification-dot {
+  width: 8px;
+  height: 8px;
+  background-color: var(--color-warning);
+  border-radius: 50%;
+  display: inline-block;
+  margin-left: 4px;
+}
+
+.tab-content {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.tab-pane {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Auditor details layout */
+.audit-inspector-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.inspector-header {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid var(--panel-border);
+  margin-bottom: 15px;
+}
+
+.inspector-header .agent-avatar {
+  font-size: 2rem;
+}
+
+.inspector-header h4 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.audit-tasks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  overflow-y: auto;
+  flex-grow: 1;
+  padding-right: 5px;
+}
+
+.no-tasks-msg {
+  text-align: center;
+  color: var(--color-text-muted);
+  font-style: italic;
+  padding-top: 40px;
+  font-size: 0.85rem;
+}
+
+.audit-task-card {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.audit-task-card.failed {
+  border-color: rgba(248, 113, 113, 0.3);
+  background: rgba(248, 113, 113, 0.03);
+}
+
+.audit-task-card.completed, .audit-task-card.approved {
+  border-color: rgba(52, 211, 153, 0.3);
+  background: rgba(52, 211, 153, 0.03);
+}
+
+.task-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.task-card-header h5 {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #fff;
+}
+
+.task-desc {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.task-io-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 5px;
+}
+
+.io-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.io-section strong {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.io-section pre {
+  margin: 0;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  overflow: auto;
+  font-family: monospace;
+  font-size: 0.75rem;
+  color: #e2e8f0;
+  max-height: 180px;
 }
 </style>

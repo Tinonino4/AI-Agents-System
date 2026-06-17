@@ -2,6 +2,7 @@ package com.swfactory.sdlc.infrastructure.ai.springai;
 
 import com.swfactory.sdlc.domain.agent.AgentNode;
 import com.swfactory.sdlc.domain.model.AgentTask;
+import com.swfactory.sdlc.domain.model.BuildResult;
 import com.swfactory.sdlc.domain.model.ProjectContext;
 import com.swfactory.sdlc.domain.repository.WorkspaceRepository;
 import org.slf4j.Logger;
@@ -63,18 +64,17 @@ public class SpringAiQaAgent implements AgentNode {
             parseAndWriteFiles(response);
 
             // Ejecutar maven test en el sandbox/sistema de archivos local
-            boolean buildPassed = workspaceRepository.executeBuildAndTest();
+            BuildResult buildResult = workspaceRepository.executeBuildAndTest();
 
-            if (buildPassed) {
+            if (buildResult.success()) {
                 log.info("Verificación de QA: Compilación y Pruebas exitosas (BUILD SUCCESS).");
                 task.setStatus("COMPLETED");
                 task.setOutputData(response);
             } else {
                 log.warn("Verificación de QA: Compilación o Pruebas fallidas.");
                 task.setStatus("FAILED");
-                // Si falla, pasamos detalles del error o un mock del log si es una simulación inicial
-                task.setOutputData("[ERROR] Test compilation failed at package com.swfactory.sdlc. \n" +
-                                   "Mismatched signature or assertion failed in ProductControllerTest.java line 24.");
+                // Guardar los logs de compilación reales para que el orquestador se los pase al desarrollador
+                task.setOutputData(buildResult.logs());
             }
         } catch (Exception e) {
             log.error("Error en verificación de QA", e);
