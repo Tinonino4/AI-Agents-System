@@ -86,6 +86,22 @@ const selectedAgentForAudit = ref(null)
 const selectedAgentTasks = ref([])
 const projectsList = ref([])
 
+// Collapsible panels state
+const isLeftCollapsed = ref(false)
+const isCenterCollapsed = ref(false)
+
+const isRightMaximized = computed(() => isLeftCollapsed.value && isCenterCollapsed.value)
+
+const toggleRightMaximize = () => {
+  if (isRightMaximized.value) {
+    isLeftCollapsed.value = false
+    isCenterCollapsed.value = false
+  } else {
+    isLeftCollapsed.value = true
+    isCenterCollapsed.value = true
+  }
+}
+
 // Utility functions
 const addLog = (message, type = 'info') => {
   const time = new Date().toLocaleTimeString()
@@ -608,119 +624,168 @@ onMounted(async () => {
     </header>
 
     <!-- CONTENT LAYOUT -->
-    <main class="dashboard-grid">
+    <main 
+      class="dashboard-grid" 
+      :class="{ 
+        'left-collapsed': isLeftCollapsed, 
+        'center-collapsed': isCenterCollapsed,
+        'both-collapsed': isLeftCollapsed && isCenterCollapsed 
+      }"
+    >
       
       <!-- LEFT PANEL: Project & Phase State -->
-      <section class="grid-panel glass-panel project-panel">
-        <div class="panel-header">
-          <span class="icon">📁</span>
-          <h2>Proyecto & Estado SDLC</h2>
-        </div>
-        
-        <div class="project-details">
-          <!-- Inputs editables en modo simulación o antes de iniciar -->
-          <div class="form-group">
-            <label>Nombre del Proyecto:</label>
-            <input type="text" v-model="project.name" class="form-control" />
-          </div>
-          <div class="form-group">
-            <label>Descripción de Requisitos / Feature:</label>
-            <textarea v-model="project.description" rows="4" class="form-control"></textarea>
-          </div>
-          <div class="form-group">
-            <label>URL de Repositorio:</label>
-            <input type="text" v-model="project.repositoryUrl" class="form-control" />
-          </div>
-        </div>
+      <section 
+        class="grid-panel glass-panel project-panel"
+        :class="{ 'collapsed': isLeftCollapsed }"
+      >
+        <!-- Toggle button -->
+        <button 
+          class="panel-toggle-btn" 
+          @click="isLeftCollapsed = !isLeftCollapsed"
+          :title="isLeftCollapsed ? 'Expandir Panel' : 'Colapsar Panel'"
+        >
+          <span class="arrow-icon">{{ isLeftCollapsed ? '▶' : '◀' }}</span>
+        </button>
 
-        <hr class="divider" />
-
-        <!-- Vertical Stepper -->
-        <div class="stepper-list">
-          <div 
-            v-for="phase in phases" 
-            :key="phase.key"
-            class="step-item"
-            :class="{ 
-              active: project.currentPhase === phase.key,
-              completed: phases.findIndex(p => p.key === project.currentPhase) > phases.findIndex(p => p.key === phase.key)
-            }"
-          >
-            <div class="step-indicator">
-              {{ phase.icon }}
+        <!-- Full content -->
+        <div v-show="!isLeftCollapsed" class="panel-full-content">
+          <div class="panel-header">
+            <span class="icon">📁</span>
+            <h2>Proyecto & Estado SDLC</h2>
+          </div>
+          
+          <div class="project-details">
+            <!-- Inputs editables en modo simulación o antes de iniciar -->
+            <div class="form-group">
+              <label>Nombre del Proyecto:</label>
+              <input type="text" v-model="project.name" class="form-control" />
             </div>
-            <div class="step-label">
-              <h4>{{ phase.name }}</h4>
-              <span class="badge">{{ phase.key }}</span>
+            <div class="form-group">
+              <label>Descripción de Requisitos / Feature:</label>
+              <textarea v-model="project.description" rows="4" class="form-control"></textarea>
+            </div>
+            <div class="form-group">
+              <label>URL de Repositorio:</label>
+              <input type="text" v-model="project.repositoryUrl" class="form-control" />
             </div>
           </div>
+
+          <hr class="divider" />
+
+          <!-- Vertical Stepper -->
+          <div class="stepper-list">
+            <div 
+              v-for="phase in phases" 
+              :key="phase.key"
+              class="step-item"
+              :class="{ 
+                active: project.currentPhase === phase.key,
+                completed: phases.findIndex(p => p.key === project.currentPhase) > phases.findIndex(p => p.key === phase.key)
+              }"
+            >
+              <div class="step-indicator">
+                {{ phase.icon }}
+              </div>
+              <div class="step-label">
+                <h4>{{ phase.name }}</h4>
+                <span class="badge">{{ phase.key }}</span>
+              </div>
+            </div>
+          </div>
+
+          <button @click="triggerPipeline" class="btn btn-primary start-btn">
+            🚀 Iniciar Flujo de Agentes
+          </button>
+          <button @click="resetPipeline" class="btn btn-outline reset-btn">
+            Reiniciar Todo
+          </button>
         </div>
 
-        <button @click="triggerPipeline" class="btn btn-primary start-btn">
-          🚀 Iniciar Flujo de Agentes
-        </button>
-        <button @click="resetPipeline" class="btn btn-outline reset-btn">
-          Reiniciar Todo
-        </button>
+        <!-- Collapsed Content -->
+        <div v-show="isLeftCollapsed" class="panel-collapsed-content">
+          <div class="collapsed-icon">📁</div>
+          <h3 class="collapsed-title">Proyecto & Estado</h3>
+        </div>
       </section>
 
       <!-- CENTER PANEL: Subagents and Activity logs -->
-      <section class="grid-panel glass-panel agents-panel">
-        <div class="panel-header">
-          <span class="icon">🤖</span>
-          <h2>Agentes en Acción</h2>
-        </div>
+      <section 
+        class="grid-panel glass-panel agents-panel"
+        :class="{ 'collapsed': isCenterCollapsed }"
+      >
+        <!-- Toggle button -->
+        <button 
+          class="panel-toggle-btn" 
+          @click="isCenterCollapsed = !isCenterCollapsed"
+          :title="isCenterCollapsed ? 'Expandir Panel' : 'Colapsar Panel'"
+        >
+          <span class="arrow-icon">{{ isCenterCollapsed ? '▶' : '◀' }}</span>
+        </button>
 
-        <!-- Agent Cards list -->
-        <div class="agents-list">
-          <div 
-            v-for="agent in agents" 
-            :key="agent.role"
-            class="agent-card clickable"
-            :class="[agent.status.toLowerCase(), { 'selected-audit': selectedAgentForAudit?.role === agent.role }]"
-            @click="auditAgent(agent)"
-          >
-            <div class="agent-avatar">{{ agent.avatar }}</div>
-            <div class="agent-info">
-              <div class="agent-row">
-                <h3>{{ agent.name }}</h3>
-                <span class="status-badge" :class="agent.status.toLowerCase()">
-                  {{ agent.status }}
-                </span>
-              </div>
-              <p class="role-desc">{{ agent.description }}</p>
-              
-              <!-- Loader for active agent -->
-              <div v-if="agent.status === 'IN_PROGRESS'" class="progress-bar-container">
-                <div class="progress-bar-fill"></div>
-              </div>
-            </div>
+        <!-- Full content -->
+        <div v-show="!isCenterCollapsed" class="panel-full-content">
+          <div class="panel-header">
+            <span class="icon">🤖</span>
+            <h2>Agentes en Acción</h2>
           </div>
-        </div>
 
-        <hr class="divider" />
-
-        <!-- Activity logs -->
-        <div class="activity-logs">
-          <h3>Registro de Actividad</h3>
-          <div class="logs-container">
+          <!-- Agent Cards list -->
+          <div class="agents-list">
             <div 
-              v-for="(log, idx) in logs" 
-              :key="idx" 
-              class="log-row"
-              :class="log.type"
+              v-for="agent in agents" 
+              :key="agent.role"
+              class="agent-card clickable"
+              :class="[agent.status.toLowerCase(), { 'selected-audit': selectedAgentForAudit?.role === agent.role }]"
+              @click="auditAgent(agent)"
             >
-              <span class="log-time">[{{ log.time }}]</span>
-              <span class="log-msg">{{ log.message }}</span>
+              <div class="agent-avatar">{{ agent.avatar }}</div>
+              <div class="agent-info">
+                <div class="agent-row">
+                  <h3>{{ agent.name }}</h3>
+                  <span class="status-badge" :class="agent.status.toLowerCase()">
+                    {{ agent.status }}
+                  </span>
+                </div>
+                <p class="role-desc">{{ agent.description }}</p>
+                
+                <!-- Loader for active agent -->
+                <div v-if="agent.status === 'IN_PROGRESS'" class="progress-bar-container">
+                  <div class="progress-bar-fill"></div>
+                </div>
+              </div>
             </div>
           </div>
+
+          <hr class="divider" />
+
+          <!-- Activity logs -->
+          <div class="activity-logs">
+            <h3>Registro de Actividad</h3>
+            <div class="logs-container">
+              <div 
+                v-for="(log, idx) in logs" 
+                :key="idx" 
+                class="log-row"
+                :class="log.type"
+              >
+                <span class="log-time">[{{ log.time }}]</span>
+                <span class="log-msg">{{ log.message }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Collapsed Content -->
+        <div v-show="isCenterCollapsed" class="panel-collapsed-content">
+          <div class="collapsed-icon">🤖</div>
+          <h3 class="collapsed-title">Agentes en Acción</h3>
         </div>
       </section>
 
       <!-- RIGHT PANEL: Human-in-the-Loop & Audit Pane -->
       <section 
         class="grid-panel glass-panel hitl-panel"
-        :class="{ 'attention': activeTask && activeTab === 'hitl' }"
+        :class="{ 'attention': activeTask && activeTab === 'hitl', 'maximized': isRightMaximized }"
       >
         <!-- Tab Headers -->
         <div class="tab-headers">
@@ -737,6 +802,15 @@ onMounted(async () => {
             @click="activeTab = 'audit'"
           >
             🔍 Auditoría
+          </button>
+
+          <!-- Maximize Button -->
+          <button 
+            class="tab-btn maximize-btn" 
+            @click="toggleRightMaximize" 
+            :title="isRightMaximized ? 'Restaurar Vista' : 'Maximizar Vista'"
+          >
+            <span class="maximize-icon">{{ isRightMaximized ? '⧉' : '⛶' }}</span>
           </button>
         </div>
 
@@ -915,6 +989,19 @@ onMounted(async () => {
   display: grid;
   grid-template-columns: 3fr 4fr 3fr;
   gap: 20px;
+  transition: grid-template-columns 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.dashboard-grid.left-collapsed {
+  grid-template-columns: 60px 4fr 3fr;
+}
+
+.dashboard-grid.center-collapsed {
+  grid-template-columns: 3fr 60px 3fr;
+}
+
+.dashboard-grid.both-collapsed {
+  grid-template-columns: 60px 60px 1fr;
 }
 
 .grid-panel {
@@ -924,6 +1011,7 @@ onMounted(async () => {
   height: calc(100vh - 160px);
   min-height: 0;
   overflow: hidden;
+  position: relative;
 }
 
 .panel-header {
@@ -1549,5 +1637,108 @@ onMounted(async () => {
   width: 220px !important;
   cursor: pointer;
   background-color: rgba(255, 255, 255, 0.08);
+}
+
+/* Panel full content to preserve nested flex behavior */
+.panel-full-content {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  min-height: 0;
+  width: 100%;
+}
+
+/* Toggle buttons styling */
+.panel-toggle-btn {
+  position: absolute;
+  top: 15px;
+  right: 15px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--panel-border);
+  color: var(--color-text-muted);
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  z-index: 10;
+}
+
+.panel-toggle-btn:hover {
+  background: var(--color-primary-glow);
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.25);
+}
+
+.arrow-icon {
+  font-size: 0.85rem;
+  font-weight: bold;
+}
+
+/* Collapsed grid-panel overrides */
+.grid-panel.collapsed {
+  padding: 15px 10px;
+  align-items: center;
+}
+
+/* Collapsed content container */
+.panel-collapsed-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  height: 100%;
+  width: 100%;
+}
+
+.collapsed-icon {
+  font-size: 1.5rem;
+  margin-top: 40px;
+  opacity: 0.7;
+}
+
+.collapsed-title {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  transform: rotate(180deg);
+  color: var(--color-text-muted);
+  font-weight: 700;
+  font-size: 0.8rem;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  margin: 0;
+  white-space: nowrap;
+  flex-grow: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.6;
+}
+
+/* Maximize Button in Tab headers */
+.maximize-btn {
+  margin-left: auto;
+  border-bottom: 2px solid transparent !important;
+  color: var(--color-text-muted);
+  font-size: 1.15rem !important;
+  padding: 8px !important;
+}
+
+.maximize-btn:hover {
+  color: var(--color-primary) !important;
+  background-color: transparent !important;
+}
+
+.maximize-icon {
+  display: inline-block;
+  transition: transform 0.2s ease;
+}
+
+.maximize-btn:hover .maximize-icon {
+  transform: scale(1.15);
 }
 </style>
