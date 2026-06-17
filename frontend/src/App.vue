@@ -1251,7 +1251,9 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 15px;
-  height: calc(100% - 40px);
+  flex-grow: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .task-alert {
@@ -1284,6 +1286,7 @@ onMounted(async () => {
   border-radius: 8px;
   background: rgba(0,0,0,0.4);
   flex-grow: 1;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -1412,6 +1415,7 @@ onMounted(async () => {
   flex-grow: 1;
   display: flex;
   flex-direction: column;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -1419,6 +1423,7 @@ onMounted(async () => {
   flex-grow: 1;
   display: flex;
   flex-direction: column;
+  min-height: 0;
   overflow: hidden;
 }
 
