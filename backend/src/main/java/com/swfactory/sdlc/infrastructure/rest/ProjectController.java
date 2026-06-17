@@ -86,6 +86,16 @@ public class ProjectController {
     }
 
     /**
+     * Endpoint para obtener todos los proyectos.
+     */
+    @GetMapping
+    @Operation(summary = "Obtener la lista de todos los proyectos")
+    public ResponseEntity<List<ProjectContext>> getAllProjects() {
+        List<ProjectContext> projects = projectRepository.findAll();
+        return ResponseEntity.ok(projects);
+    }
+
+    /**
      * Endpoint para obtener todas las tareas asociadas a un proyecto.
      */
     @GetMapping("/{projectId}/tasks")

@@ -84,6 +84,7 @@ const reviewerFeedback = ref('')
 const activeTab = ref('hitl')
 const selectedAgentForAudit = ref(null)
 const selectedAgentTasks = ref([])
+const projectsList = ref([])
 
 // Utility functions
 const addLog = (message, type = 'info') => {
@@ -283,6 +284,7 @@ const startApiPipeline = async () => {
     project.id = context.id
     addLog('Pipeline procesado por la factoría del backend.', 'success')
 
+    await loadProjectsList()
     await refreshProjectState()
 
   } catch (err) {
@@ -502,6 +504,38 @@ const runDevelopmentPhase = async () => {
   addLog('Agente DevOps completó la configuración. Esperando aprobación humana (HITL)...', 'warning')
 }
 
+// Load all projects from the API
+const loadProjectsList = async () => {
+  if (connectionMode.value !== 'api') return
+  try {
+    const res = await fetch(`${backendUrl.value}/api/v1/projects`)
+    if (res.ok) {
+      projectsList.value = await res.json()
+    }
+  } catch (err) {
+    console.error("Error loading projects list", err)
+  }
+}
+
+// Select a project and refresh its states
+const selectProject = async (proj) => {
+  project.id = proj.id
+  project.name = proj.name
+  project.description = proj.description
+  project.repositoryUrl = proj.repositoryUrl
+  
+  addLog(`Proyecto cargado: ${proj.name}`, 'info')
+  await refreshProjectState()
+}
+
+// Dropdown selector change handler
+const onProjectDropdownChange = (projectId) => {
+  const proj = projectsList.value.find(p => p.id === projectId)
+  if (proj) {
+    selectProject(proj)
+  }
+}
+
 // API Connection Action Trigger
 const connectToBackendApi = async () => {
   connectionMode.value = 'api'
@@ -512,6 +546,10 @@ const connectToBackendApi = async () => {
     const res = await fetch(`${backendUrl.value}/actuator/health`, { mode: 'cors' })
     if (res.ok) {
       addLog('Conexión con el servidor backend establecida correctamente (Actuator OK).', 'success')
+      await loadProjectsList()
+      if (projectsList.value.length > 0) {
+        await selectProject(projectsList.value[0])
+      }
     } else {
       addLog('No se pudo verificar el estado del servidor. Asegúrate de ejecutar el backend.', 'warning')
     }
@@ -521,8 +559,9 @@ const connectToBackendApi = async () => {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   addLog('Panel de Supervisión Agéntica inicializado. Listo para operar.', 'success')
+  await connectToBackendApi()
 })
 </script>
 
@@ -547,6 +586,17 @@ onMounted(() => {
           <input type="radio" v-model="connectionMode" value="api" @change="connectToBackendApi" />
           <span>Conectar Java API</span>
         </label>
+        <select 
+          v-if="connectionMode === 'api' && projectsList.length > 0" 
+          :value="project.id" 
+          @change="e => onProjectDropdownChange(e.target.value)"
+          class="api-input project-select-dropdown"
+        >
+          <option value="" disabled>-- Seleccionar Proyecto --</option>
+          <option v-for="proj in projectsList" :key="proj.id" :value="proj.id">
+            📁 {{ proj.name }} ({{ proj.currentPhase }})
+          </option>
+        </select>
         <input 
           v-if="connectionMode === 'api'" 
           type="text" 
@@ -1482,5 +1532,11 @@ onMounted(() => {
   font-size: 0.75rem;
   color: #e2e8f0;
   max-height: 180px;
+}
+
+.project-select-dropdown {
+  width: 220px !important;
+  cursor: pointer;
+  background-color: rgba(255, 255, 255, 0.08);
 }
 </style>

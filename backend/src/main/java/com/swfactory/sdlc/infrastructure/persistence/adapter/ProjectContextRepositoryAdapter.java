@@ -6,8 +6,10 @@ import com.swfactory.sdlc.infrastructure.persistence.entity.ProjectContextEntity
 import com.swfactory.sdlc.infrastructure.persistence.repository.SpringDataProjectContextRepository;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * Adaptador de persistencia para ProjectContext. Implementa el puerto del dominio
@@ -32,6 +34,14 @@ public class ProjectContextRepositoryAdapter implements ProjectContextRepository
     @Override
     public Optional<ProjectContext> findById(UUID id) {
         return springDataRepository.findById(id).map(this::toDomain);
+    }
+
+    @Override
+    public List<ProjectContext> findAll() {
+        return springDataRepository.findAll().stream()
+                .map(this::toDomain)
+                .sorted((p1, p2) -> p2.getCreatedAt().compareTo(p1.getCreatedAt()))
+                .collect(Collectors.toList());
     }
 
     private ProjectContextEntity toEntity(ProjectContext domain) {
