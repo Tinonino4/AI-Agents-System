@@ -23,3 +23,25 @@ Este archivo sirve como la "memoria compartida" de diseño de este proyecto. Tod
 *   **Consecuencias:**
     *   **Positivas:** Seguridad y consistencia antes de la ejecución de código.
     *   **Negativas:** El flujo ya no es 100% asíncrono y requiere la intervención activa del supervisor para progresar.
+
+---
+
+### [ADR-003] [2026-06-23] - Escritura Física de Resultados en Workspace para Todos los Agentes
+
+*   **Estado:** Aceptado
+*   **Contexto:** Los agentes `PRODUCT_OWNER` y `SRE` actualmente generan especificaciones e infraestructura (Dockerfile/manifiestos) pero solo se persisten en base de datos. Esto rompe la consistencia de tener el proyecto de software completo autocontenido en la carpeta `/projects/`.
+*   **Decisión:** Modificar `SpringAiPoAgent` y `SpringAiSreAgent` para que utilicen el protocolo de bloques `=== FILE ===` de forma que escriban físicamente sus productos de trabajo en disco (ej: historias de usuario en `docs/requirements.md` y archivos de despliegue en la raíz del subproyecto).
+*   **Consecuencias:**
+    *   **Positivas:** El workspace de salida almacena el 100% de los entregables del ciclo SDLC, haciéndolo ejecutable de forma autónoma.
+    *   **Negativas:** Se añade lógica de escritura física y parsing en fases que antes solo procesaban texto simple.
+
+---
+
+### [ADR-004] [2026-06-23] - Aislamiento en Sandbox Docker para Compilación y Pruebas
+
+*   **Estado:** Propuesto
+*   **Contexto:** Ejecutar `mvn clean test` directamente en el sistema host del usuario mediante subprocesos de Java en `LocalWorkspaceRepository` puede ser peligroso si el agente de desarrollo introduce comandos destructivos, bugs o código malicioso de forma involuntaria.
+*   **Decisión:** Encapsular la compilación y ejecución del agente QA dentro de contenedores Docker efímeros montados en modo lectura/escritura únicamente sobre el subdirectorio del proyecto generado.
+*   **Consecuencias:**
+    *   **Positivas:** Seguridad absoluta sobre la máquina host que ejecuta el backend.
+    *   **Negativas:** Incremento en el tiempo de ejecución debido al arranque de contenedores Docker y configuración de volúmenes compartidos.
