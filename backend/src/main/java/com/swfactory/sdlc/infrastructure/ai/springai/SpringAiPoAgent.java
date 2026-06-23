@@ -18,12 +18,16 @@ public class SpringAiPoAgent implements AgentNode {
     private static final Logger log = LoggerFactory.getLogger(SpringAiPoAgent.class);
 
     private final ChatClient chatClient;
+    private final AgentContextReader agentContextReader;
 
-    public SpringAiPoAgent(ChatClient.Builder chatClientBuilder) {
+    public SpringAiPoAgent(ChatClient.Builder chatClientBuilder, AgentContextReader agentContextReader) {
+        this.agentContextReader = agentContextReader;
         this.chatClient = chatClientBuilder
                 .defaultSystem("""
                         Eres el Product Owner de una factoría de software autónoma.
                         Tu rol consiste en convertir descripciones de requisitos del cliente en Historias de Usuario estructuradas.
+                        
+                        Tienes a tu disposición una herramienta para leer el contexto del proyecto (.agents/blueprint.md, roadmap.md, etc.) si necesitas alinear los requisitos con las directrices o el estado actual del desarrollo.
                         
                         Debes entregar tu salida SIEMPRE en formato Markdown siguiendo esta estructura estricta:
                         
@@ -43,10 +47,11 @@ public class SpringAiPoAgent implements AgentNode {
                         ```gherkin
                         Scenario: [Título del escenario]
                           Given [contexto inicial]
-                          When [acción ejecutada]
+                          When [action ejecutada]
                           Then [resultado esperado]
                         ```
                         """)
+                .defaultTools(agentContextReader)
                 .build();
     }
 

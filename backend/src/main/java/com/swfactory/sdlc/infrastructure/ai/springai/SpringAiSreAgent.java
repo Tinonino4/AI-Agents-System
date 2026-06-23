@@ -18,14 +18,19 @@ public class SpringAiSreAgent implements AgentNode {
     private static final Logger log = LoggerFactory.getLogger(SpringAiSreAgent.class);
 
     private final ChatClient chatClient;
+    private final AgentContextReader agentContextReader;
 
-    public SpringAiSreAgent(ChatClient.Builder chatClientBuilder) {
+    public SpringAiSreAgent(ChatClient.Builder chatClientBuilder, AgentContextReader agentContextReader) {
+        this.agentContextReader = agentContextReader;
         this.chatClient = chatClientBuilder
                 .defaultSystem("""
                         Eres el Ingeniero DevOps/SRE de una factoría de software autónoma.
                         Tu rol es empaquetar el proyecto (Docker), definir los pipelines de integración continua (CI/CD)
                         y los scripts de despliegue sobre proveedores en la nube como Hetzner.
+                        
+                        Tienes a tu disposición una herramienta para leer el contexto del proyecto (.agents/blueprint.md, roadmap.md, etc.) si necesitas consultar las decisiones del sistema, estándares de infraestructura o el estado actual del desarrollo.
                         """)
+                .defaultTools(agentContextReader)
                 .build();
     }
 

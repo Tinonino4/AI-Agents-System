@@ -25,6 +25,8 @@ public class ProjectContextEntity {
 
     private String currentPhase;
 
+    private String status;
+
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "project_phase_outputs", joinColumns = @JoinColumn(name = "project_context_id"))
     @MapKeyColumn(name = "phase_name")
@@ -39,13 +41,14 @@ public class ProjectContextEntity {
     public ProjectContextEntity() {}
 
     public ProjectContextEntity(UUID id, String name, String description, String repositoryUrl, 
-                                String currentPhase, Map<String, String> phaseOutputs, int rejectionCount,
+                                String currentPhase, String status, Map<String, String> phaseOutputs, int rejectionCount,
                                 LocalDateTime createdAt, LocalDateTime updatedAt) {
         this.id = id;
         this.name = name;
         this.description = description;
         this.repositoryUrl = repositoryUrl;
         this.currentPhase = currentPhase;
+        this.status = status;
         this.phaseOutputs = phaseOutputs;
         this.rejectionCount = rejectionCount;
         this.createdAt = createdAt;
@@ -66,6 +69,9 @@ public class ProjectContextEntity {
 
     public String getCurrentPhase() { return currentPhase; }
     public void setCurrentPhase(String currentPhase) { this.currentPhase = currentPhase; }
+
+    public String getStatus() { return status; }
+    public void setStatus(String status) { this.status = status; }
 
     public Map<String, String> getPhaseOutputs() { return phaseOutputs; }
     public void setPhaseOutputs(Map<String, String> phaseOutputs) { this.phaseOutputs = phaseOutputs; }
@@ -89,6 +95,7 @@ public class ProjectContextEntity {
         private String description;
         private String repositoryUrl;
         private String currentPhase;
+        private String status;
         private Map<String, String> phaseOutputs;
         private int rejectionCount;
         private LocalDateTime createdAt;
@@ -99,13 +106,14 @@ public class ProjectContextEntity {
         public ProjectContextEntityBuilder description(String description) { this.description = description; return this; }
         public ProjectContextEntityBuilder repositoryUrl(String repositoryUrl) { this.repositoryUrl = repositoryUrl; return this; }
         public ProjectContextEntityBuilder currentPhase(String currentPhase) { this.currentPhase = currentPhase; return this; }
+        public ProjectContextEntityBuilder status(String status) { this.status = status; return this; }
         public ProjectContextEntityBuilder phaseOutputs(Map<String, String> phaseOutputs) { this.phaseOutputs = phaseOutputs; return this; }
         public ProjectContextEntityBuilder rejectionCount(int rejectionCount) { this.rejectionCount = rejectionCount; return this; }
         public ProjectContextEntityBuilder createdAt(LocalDateTime createdAt) { this.createdAt = createdAt; return this; }
         public ProjectContextEntityBuilder updatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; return this; }
 
         public ProjectContextEntity build() {
-            return new ProjectContextEntity(id, name, description, repositoryUrl, currentPhase, phaseOutputs, rejectionCount, createdAt, updatedAt);
+            return new ProjectContextEntity(id, name, description, repositoryUrl, currentPhase, status, phaseOutputs, rejectionCount, createdAt, updatedAt);
         }
     }
 }

@@ -22,20 +22,25 @@ public class SpringAiQaAgent implements AgentNode {
 
     private final ChatClient chatClient;
     private final WorkspaceRepository workspaceRepository;
+    private final AgentContextReader agentContextReader;
 
-    public SpringAiQaAgent(ChatClient.Builder chatClientBuilder, WorkspaceRepository workspaceRepository) {
+    public SpringAiQaAgent(ChatClient.Builder chatClientBuilder, WorkspaceRepository workspaceRepository, AgentContextReader agentContextReader) {
+        this.workspaceRepository = workspaceRepository;
+        this.agentContextReader = agentContextReader;
         this.chatClient = chatClientBuilder
                 .defaultSystem("""
                         Eres el Ingeniero de QA de una factoría de software autónoma.
                         Tu rol es escribir tests JUnit 5 de calidad y desafiar el código generado.
+                        
+                        Tienes a tu disposición una herramienta para leer el contexto del proyecto (.agents/blueprint.md, roadmap.md, etc.) si necesitas alinear tus estrategias de prueba con el roadmap o las reglas técnicas del sistema.
                         
                         IMPORTANTE: Debes dar tu respuesta estructurada para escribir archivos usando este formato:
                         === FILE: nombre_relativo_del_archivo ===
                         [contenido del archivo]
                         === END FILE ===
                         """)
+                .defaultTools(agentContextReader)
                 .build();
-        this.workspaceRepository = workspaceRepository;
     }
 
     @Override

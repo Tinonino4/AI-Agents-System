@@ -8,6 +8,7 @@ import com.swfactory.sdlc.domain.repository.AgentTaskRepository;
 import com.swfactory.sdlc.domain.repository.ProjectContextRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -37,6 +38,21 @@ public class OrchestrateDevelopmentPhaseService implements OrchestrateDevelopmen
 
     @Override
     public ProjectContext orchestrate(ProjectContext context) {
+        // Cargar contexto fresco de la base de datos para validar estado actual
+        ProjectContext dbContext = projectContextRepository.findById(context.getId()).orElse(context);
+        if ("PAUSED".equals(dbContext.getStatus())) {
+            log.info("Orquestación detenida debido a que el proyecto {} está en estado PAUSED.", dbContext.getName());
+            return dbContext;
+        }
+
+        // Si por alguna razón el estado no es RUNNING ni WAITING_FOR_HITL (ej. es IDLE al arrancar), lo ponemos a RUNNING
+        if (!"RUNNING".equals(dbContext.getStatus()) && !"WAITING_FOR_HITL".equals(dbContext.getStatus())) {
+            dbContext.setStatus("RUNNING");
+            dbContext = projectContextRepository.save(dbContext);
+        }
+
+        context = dbContext;
+
         log.info("Orquestando fase de desarrollo para el proyecto: {} (Fase actual: {})", 
                 context.getName(), context.getCurrentPhase());
 
@@ -100,13 +116,23 @@ public class OrchestrateDevelopmentPhaseService implements OrchestrateDevelopmen
 
                 log.warn("Verificación de QA fallida (Reintento {}/3). Devolviendo flujo a BACKEND.", currentRejections + 1);
                 
+                // Verificar si fue pausado antes del reintento de QA
+                ProjectContext latestContext = projectContextRepository.findById(context.getId()).orElse(context);
+                if ("PAUSED".equals(latestContext.getStatus())) {
+                    log.info("Orquestación detenida temporalmente (PAUSED) durante bucle de autocuración de QA.");
+                    return latestContext;
+                }
+                
                 // Reanudar ejecución automáticamente volviendo a invocar al Backend
-                return orchestrate(context);
+                return orchestrate(latestContext);
             } else {
                 // Superado el límite de intentos, requerir intervención humana (HITL)
                 task.setStatus("WAITING_FOR_HITL");
-                task.setReviewerFeedback("Fallo de QA persistente tras 3 reintentos automáticos. Revisar trazas de tests.");
                 agentTaskRepository.save(task);
+                
+                context.setStatus("WAITING_FOR_HITL");
+                projectContextRepository.save(context);
+
                 log.error("Bucle de autocuración de QA superado. Flujo detenido en espera de revisión humana (HITL).");
                 return context;
             }
@@ -116,6 +142,10 @@ public class OrchestrateDevelopmentPhaseService implements OrchestrateDevelopmen
         if (requiresHitl(context.getCurrentPhase())) {
             task.setStatus("WAITING_FOR_HITL");
             agentTaskRepository.save(task);
+            
+            context.setStatus("WAITING_FOR_HITL");
+            projectContextRepository.save(context);
+
             log.info("Tarea {} asignada a {} requiere aprobación humana (HITL). Deteniendo flujo.", task.getId(), agent.getRole());
             return context;
         }
@@ -136,6 +166,9 @@ public class OrchestrateDevelopmentPhaseService implements OrchestrateDevelopmen
         // Transición automática de fase
         String nextPhase = getNextPhase(context.getCurrentPhase());
         context.setCurrentPhase(nextPhase);
+        if ("COMPLETED".equals(nextPhase)) {
+            context.setStatus("COMPLETED");
+        }
         projectContextRepository.save(context);
 
         log.info("Fase completada con éxito. Avanzando a la fase: {}", nextPhase);
@@ -143,10 +176,29 @@ public class OrchestrateDevelopmentPhaseService implements OrchestrateDevelopmen
         // Si no hemos llegado al final, continuar orquestando de manera secuencial.
         // Las fases que requieran aprobación humana se detendrán en su propia ejecución tras invocar al agente correspondiente.
         if (!"COMPLETED".equals(nextPhase)) {
-            return orchestrate(context);
+            // Verificar si fue pausado en BD antes de hacer la recursión
+            ProjectContext latestContext = projectContextRepository.findById(context.getId()).orElse(context);
+            if ("PAUSED".equals(latestContext.getStatus())) {
+                log.info("Orquestación detenida temporalmente (PAUSED) antes de iniciar fase: {}", nextPhase);
+                return latestContext;
+            }
+            return orchestrate(latestContext);
         }
 
         return context;
+    }
+
+    @Override
+    @Async
+    public void orchestrateAsync(UUID projectId) {
+        log.info("[ASYNC] Iniciando ejecución asíncrona para proyecto: {}", projectId);
+        projectContextRepository.findById(projectId).ifPresent(context -> {
+            if (!"RUNNING".equals(context.getStatus())) {
+                context.setStatus("RUNNING");
+                context = projectContextRepository.save(context);
+            }
+            orchestrate(context);
+        });
     }
 
     @Override
@@ -173,10 +225,11 @@ public class OrchestrateDevelopmentPhaseService implements OrchestrateDevelopmen
             // Avanzar a la siguiente fase
             String nextPhase = getNextPhase(context.getCurrentPhase());
             context.setCurrentPhase(nextPhase);
-            projectContextRepository.save(context);
-
-            // Reanudar orquestación
-            orchestrate(context);
+            
+            // Reanudar orquestación asíncronamente
+            context.setStatus("RUNNING");
+            context = projectContextRepository.save(context);
+            orchestrateAsync(context.getId());
         } else {
             log.info("Tarea {} rechazada por el revisor humano. Motivo: {}", taskId, feedback);
             task.setStatus("REJECTED");
@@ -185,6 +238,7 @@ public class OrchestrateDevelopmentPhaseService implements OrchestrateDevelopmen
 
             // Guardar feedback para retroalimentar al agente actual
             context.getPhaseOutputs().put("LatestInput", "Retroalimentación de supervisor humano: " + feedback);
+            context.setStatus("PAUSED");
             projectContextRepository.save(context);
         }
 

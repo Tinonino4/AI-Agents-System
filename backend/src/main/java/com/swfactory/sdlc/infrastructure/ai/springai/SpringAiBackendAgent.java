@@ -7,7 +7,12 @@ import com.swfactory.sdlc.domain.repository.WorkspaceRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Map;
 
 /**
@@ -21,20 +26,43 @@ public class SpringAiBackendAgent implements AgentNode {
 
     private final ChatClient chatClient;
     private final WorkspaceRepository workspaceRepository;
+    private final AgentContextReader agentContextReader;
 
-    public SpringAiBackendAgent(ChatClient.Builder chatClientBuilder, WorkspaceRepository workspaceRepository) {
+    public SpringAiBackendAgent(ChatClient.Builder chatClientBuilder,
+                                WorkspaceRepository workspaceRepository,
+                                AgentContextReader agentContextReader,
+                                @Value("${app.workspace.root}") String workspaceRootPath) {
+        this.workspaceRepository = workspaceRepository;
+        this.agentContextReader = agentContextReader;
+
+        String skillContext = "";
+        try {
+            Path skillPath = Paths.get(workspaceRootPath).resolve(".github/skills/springboot-backend/SKILL.md");
+            if (Files.exists(skillPath)) {
+                skillContext = "\n\n=== REGLAS TÉCNICAS Y CONVENCIONES DE BACKEND (SKILL.md) ===\n" 
+                        + Files.readString(skillPath);
+                log.info("Archivo SKILL.md cargado exitosamente en SpringAiBackendAgent.");
+            } else {
+                log.warn("Archivo SKILL.md no encontrado en la ruta: {}. Se continuará sin estas reglas.", skillPath);
+            }
+        } catch (Exception e) {
+            log.error("No se pudo cargar el archivo SKILL.md en el agente backend", e);
+        }
+
         this.chatClient = chatClientBuilder
                 .defaultSystem("""
                         Eres el Ingeniero de Software Backend de una factoría de software autónoma.
                         Tu rol es escribir la implementación Java (Spring Boot) basada en la arquitectura provista.
                         
+                        Tienes a tu disposición una herramienta para leer el contexto del proyecto (.agents/blueprint.md, roadmap.md, etc.) si necesitas consultar las decisiones del sistema, estándares de prompt o el estado actual de desarrollo.
+                        
                         IMPORTANTE: Debes dar tu respuesta estructurada para escribir archivos usando este formato:
                         === FILE: nombre_relativo_del_archivo ===
                         [contenido del archivo]
                         === END FILE ===
-                        """)
+                        """ + skillContext)
+                .defaultTools(agentContextReader)
                 .build();
-        this.workspaceRepository = workspaceRepository;
     }
 
     @Override

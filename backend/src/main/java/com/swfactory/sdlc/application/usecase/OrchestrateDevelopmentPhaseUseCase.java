@@ -21,6 +21,13 @@ public interface OrchestrateDevelopmentPhaseUseCase {
     ProjectContext orchestrate(ProjectContext context);
 
     /**
+     * Inicia u orquesta de forma asíncrona la fase actual del desarrollo del proyecto en segundo plano.
+     *
+     * @param projectId El ID del proyecto.
+     */
+    void orchestrateAsync(UUID projectId);
+
+    /**
      * Resuelve el estado de una tarea en espera de aprobación humana (HITL).
      *
      * @param taskId   El ID de la tarea.

@@ -14,6 +14,7 @@ const project = reactive({
   description: 'Un sistema de backend hexagonal robusto con Spring Boot, seguridad por tokens, PostgreSQL local y despliegue automatizado.',
   repositoryUrl: 'git@github.com:tino/ecommerce-core-api.git',
   currentPhase: 'ANALYSIS', // ANALYSIS, ARCHITECTURE, DEVELOPMENT, TESTING, DEPLOYMENT, COMPLETED
+  status: 'IDLE', // IDLE, RUNNING, PAUSED, WAITING_FOR_HITL, FAILED, COMPLETED
   phaseOutputs: {
     ANALYSIS: '',
     ARCHITECTURE: '',
@@ -207,6 +208,28 @@ const loadActiveTask = async (context) => {
   }
 }
 
+// Polling variables and helpers for async updates
+let pollingInterval = null
+
+const startPolling = () => {
+  if (pollingInterval) return
+  pollingInterval = setInterval(async () => {
+    // Si cambiamos de modo o no hay proyecto, parar
+    if (connectionMode.value !== 'api' || !project.id) {
+      stopPolling()
+      return
+    }
+    await refreshProjectState()
+  }, 2500)
+}
+
+const stopPolling = () => {
+  if (pollingInterval) {
+    clearInterval(pollingInterval)
+    pollingInterval = null
+  }
+}
+
 // Refresh project state and sync with the backend
 const refreshProjectState = async () => {
   if (connectionMode.value !== 'api' || !project.id) return
@@ -217,6 +240,7 @@ const refreshProjectState = async () => {
       const context = await res.json()
       
       project.currentPhase = context.currentPhase
+      project.status = context.status || 'IDLE'
       project.phaseOutputs.ANALYSIS = context.phaseOutputs.ANALYSIS || ''
       project.phaseOutputs.ARCHITECTURE = context.phaseOutputs.ARCHITECTURE || ''
       project.phaseOutputs.DEVELOPMENT = context.phaseOutputs.DEVELOPMENT || ''
@@ -225,6 +249,13 @@ const refreshProjectState = async () => {
       
       updateAgentStatusesFromContext(context)
       await loadActiveTask(context)
+
+      // Iniciar o detener polling en base al estado del proyecto
+      if (project.status === 'RUNNING') {
+        startPolling()
+      } else {
+        stopPolling()
+      }
     }
   } catch (err) {
     addLog(`Error al sincronizar con el backend: ${err.message}`, 'error')
@@ -539,9 +570,131 @@ const selectProject = async (proj) => {
   project.name = proj.name
   project.description = proj.description
   project.repositoryUrl = proj.repositoryUrl
+  project.status = proj.status || 'IDLE'
   
-  addLog(`Proyecto cargado: ${proj.name}`, 'info')
+  addLog(`Proyecto cargado: ${proj.name} (Estado: ${project.status})`, 'info')
   await refreshProjectState()
+
+  if (project.status === 'RUNNING') {
+    startPolling()
+  } else {
+    stopPolling()
+  }
+}
+
+// Save as new project in Database
+const createNewProject = async () => {
+  if (!project.name.trim() || !project.description.trim()) {
+    alert('Por favor completa el nombre y la descripción para crear el proyecto.')
+    return
+  }
+  
+  if (connectionMode.value === 'api') {
+    try {
+      const res = await fetch(`${backendUrl.value}/api/v1/projects`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: project.name,
+          description: project.description,
+          repositoryUrl: project.repositoryUrl
+        })
+      })
+      if (res.ok) {
+        const saved = await res.json()
+        addLog(`Proyecto creado exitosamente en base de datos: ${saved.name}`, 'success')
+        await loadProjectsList()
+        await selectProject(saved)
+      } else {
+        addLog('Error al guardar el nuevo proyecto en el servidor.', 'error')
+      }
+    } catch (err) {
+      addLog(`Error al conectar con la API: ${err.message}`, 'error')
+    }
+  } else {
+    addLog(`[Simulación] Proyecto creado en memoria: ${project.name}`, 'success')
+    project.id = 'sim-proj-' + Date.now()
+    project.status = 'IDLE'
+  }
+}
+
+// Orchestrate pipeline using async execution
+const orchestrateApiPipeline = async () => {
+  if (!project.id) {
+    await createNewProject()
+    if (!project.id) return
+  }
+  
+  addLog(`Arrancando orquestación asíncrona para: ${project.name}`, 'primary')
+  project.status = 'RUNNING'
+  
+  try {
+    const res = await fetch(`${backendUrl.value}/api/v1/projects/${project.id}/orchestrate`, {
+      method: 'POST'
+    })
+    
+    if (res.ok) {
+      addLog('Flujo de agentes iniciado en segundo plano.', 'success')
+      await refreshProjectState()
+      startPolling()
+    } else {
+      addLog('Fallo al arrancar la orquestación en el servidor.', 'error')
+      project.status = 'FAILED'
+    }
+  } catch (err) {
+    addLog(`Error al conectar con la API para orquestar: ${err.message}`, 'error')
+    project.status = 'FAILED'
+  }
+}
+
+// Send pause signal to flow
+const pauseApiPipeline = async () => {
+  if (!project.id) return
+  addLog(`Enviando señal de pausa para: ${project.name}...`, 'warning')
+  
+  try {
+    const res = await fetch(`${backendUrl.value}/api/v1/projects/${project.id}/pause`, {
+      method: 'POST'
+    })
+    
+    if (res.ok) {
+      project.status = 'PAUSED'
+      addLog('Señal de pausa registrada. El pipeline se detendrá al finalizar la tarea del agente actual.', 'warning')
+      stopPolling()
+      await refreshProjectState()
+    }
+  } catch (err) {
+    addLog(`Error al pausar el flujo: ${err.message}`, 'error')
+  }
+}
+
+// Reset flow and outputs
+const resetApiPipeline = async () => {
+  if (!project.id) {
+    resetPipeline()
+    return
+  }
+  
+  if (!confirm('¿Seguro que deseas reiniciar el flujo de este proyecto? Se perderán todas las salidas generadas.')) {
+    return
+  }
+  
+  addLog(`Reiniciando flujo para: ${project.name}...`, 'info')
+  stopPolling()
+  
+  try {
+    const res = await fetch(`${backendUrl.value}/api/v1/projects/${project.id}/reset`, {
+      method: 'POST'
+    })
+    
+    if (res.ok) {
+      resetPipeline()
+      await refreshProjectState()
+      addLog('Proyecto reiniciado con éxito. Listo para iniciar de nuevo.', 'success')
+    }
+  } catch (err) {
+    addLog(`Error al reiniciar el flujo: ${err.message}`, 'error')
+  }
 }
 
 // Dropdown selector change handler
@@ -693,12 +846,50 @@ onMounted(async () => {
             </div>
           </div>
 
-          <button @click="triggerPipeline" class="btn btn-primary start-btn">
-            🚀 Iniciar Flujo de Agentes
-          </button>
-          <button @click="resetPipeline" class="btn btn-outline reset-btn">
-            Reiniciar Todo
-          </button>
+          <!-- Controles de ejecución -->
+          <div class="control-actions" style="display: flex; flex-direction: column; gap: 8px; margin-top: 15px;">
+            <div v-if="connectionMode === 'api'" style="display: flex; gap: 8px; width: 100%;">
+              <button 
+                v-if="project.status !== 'RUNNING'" 
+                @click="orchestrateApiPipeline" 
+                class="btn btn-primary start-btn" 
+                style="flex: 1;"
+              >
+                🚀 Iniciar / Reanudar
+              </button>
+              <button 
+                v-else 
+                @click="pauseApiPipeline" 
+                class="btn btn-warning pause-btn" 
+                style="flex: 1; background: #f39c12; color: white; border: none; border-radius: 6px; padding: 10px; cursor: pointer; font-weight: 600;"
+              >
+                ⏸️ Pausar Flujo
+              </button>
+              
+              <button @click="resetApiPipeline" class="btn btn-outline reset-btn" style="flex: 1;">
+                🔄 Reiniciar
+              </button>
+            </div>
+            
+            <div v-else style="display: flex; gap: 8px; width: 100%;">
+              <button @click="triggerPipeline" class="btn btn-primary start-btn" style="flex: 1;">
+                🚀 Iniciar Simulación
+              </button>
+              <button @click="resetPipeline" class="btn btn-outline reset-btn" style="flex: 1;">
+                Reiniciar
+              </button>
+            </div>
+
+            <!-- Botón para guardar cambios o crear nuevo proyecto -->
+            <button 
+              v-if="connectionMode === 'api'" 
+              @click="createNewProject" 
+              class="btn btn-outline save-btn"
+              style="width: 100%;"
+            >
+              💾 Guardar como Nuevo Proyecto
+            </button>
+          </div>
         </div>
 
         <!-- Collapsed Content -->

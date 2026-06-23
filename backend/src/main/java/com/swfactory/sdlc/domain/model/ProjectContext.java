@@ -14,6 +14,7 @@ public class ProjectContext {
     private String description;
     private String repositoryUrl;
     private String currentPhase;
+    private String status;
     private Map<String, String> phaseOutputs;
     private int rejectionCount; // Contador para controlar el ciclo de reintentos de QA
     private LocalDateTime createdAt;
@@ -22,13 +23,14 @@ public class ProjectContext {
     public ProjectContext() {}
 
     public ProjectContext(UUID id, String name, String description, String repositoryUrl, 
-                          String currentPhase, Map<String, String> phaseOutputs, int rejectionCount, 
+                          String currentPhase, String status, Map<String, String> phaseOutputs, int rejectionCount, 
                           LocalDateTime createdAt, LocalDateTime updatedAt) {
         this.id = id;
         this.name = name;
         this.description = description;
         this.repositoryUrl = repositoryUrl;
         this.currentPhase = currentPhase;
+        this.status = status;
         this.phaseOutputs = phaseOutputs;
         this.rejectionCount = rejectionCount;
         this.createdAt = createdAt;
@@ -49,6 +51,9 @@ public class ProjectContext {
 
     public String getCurrentPhase() { return currentPhase; }
     public void setCurrentPhase(String currentPhase) { this.currentPhase = currentPhase; }
+
+    public String getStatus() { return status; }
+    public void setStatus(String status) { this.status = status; }
 
     public Map<String, String> getPhaseOutputs() { return phaseOutputs; }
     public void setPhaseOutputs(Map<String, String> phaseOutputs) { this.phaseOutputs = phaseOutputs; }
@@ -72,6 +77,7 @@ public class ProjectContext {
         private String description;
         private String repositoryUrl;
         private String currentPhase;
+        private String status;
         private Map<String, String> phaseOutputs;
         private int rejectionCount;
         private LocalDateTime createdAt;
@@ -82,13 +88,14 @@ public class ProjectContext {
         public ProjectContextBuilder description(String description) { this.description = description; return this; }
         public ProjectContextBuilder repositoryUrl(String repositoryUrl) { this.repositoryUrl = repositoryUrl; return this; }
         public ProjectContextBuilder currentPhase(String currentPhase) { this.currentPhase = currentPhase; return this; }
+        public ProjectContextBuilder status(String status) { this.status = status; return this; }
         public ProjectContextBuilder phaseOutputs(Map<String, String> phaseOutputs) { this.phaseOutputs = phaseOutputs; return this; }
         public ProjectContextBuilder rejectionCount(int rejectionCount) { this.rejectionCount = rejectionCount; return this; }
         public ProjectContextBuilder createdAt(LocalDateTime createdAt) { this.createdAt = createdAt; return this; }
         public ProjectContextBuilder updatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; return this; }
 
         public ProjectContext build() {
-            return new ProjectContext(id, name, description, repositoryUrl, currentPhase, phaseOutputs, rejectionCount, createdAt, updatedAt);
+            return new ProjectContext(id, name, description, repositoryUrl, currentPhase, status, phaseOutputs, rejectionCount, createdAt, updatedAt);
         }
     }
 }

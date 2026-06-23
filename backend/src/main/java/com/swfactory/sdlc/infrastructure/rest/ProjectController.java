@@ -47,31 +47,111 @@ public class ProjectController {
     ) {}
 
     /**
-     * Endpoint para inicializar un proyecto con requisitos y arrancar el pipeline de agentes.
+     * Endpoint para crear un proyecto con requisitos (inicialmente en estado IDLE).
      *
-     * @param request Datos del proyecto y descripción de la feature a construir.
+     * @param request Datos del proyecto.
      */
-    @PostMapping("/orchestrate")
-    @Operation(summary = "Crear un contexto e iniciar el pipeline de agentes (PO -> Architect -> ...)")
-    public ResponseEntity<ProjectContext> orchestrateProject(@RequestBody OrchestrateRequest request) {
+    @PostMapping
+    @Operation(summary = "Crear un nuevo contexto de proyecto sin arrancar la orquestación")
+    public ResponseEntity<ProjectContext> createProject(@RequestBody OrchestrateRequest request) {
         ProjectContext context = ProjectContext.builder()
                 .id(UUID.randomUUID())
                 .name(request.name())
                 .description(request.description())
                 .repositoryUrl(request.repositoryUrl())
                 .currentPhase("ANALYSIS")
+                .status("IDLE")
                 .phaseOutputs(new HashMap<>())
                 .rejectionCount(0)
                 .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())
                 .build();
 
-        // Persistir el contexto inicial del proyecto
+        context = projectRepository.save(context);
+        return ResponseEntity.ok(context);
+    }
+
+    /**
+     * Endpoint para arrancar o reanudar de forma asíncrona la orquestación de un proyecto.
+     *
+     * @param projectId El ID del proyecto.
+     */
+    @PostMapping("/{projectId}/orchestrate")
+    @Operation(summary = "Arrancar o reanudar la orquestación del proyecto en segundo plano")
+    public ResponseEntity<ProjectContext> orchestrateProject(@PathVariable UUID projectId) {
+        ProjectContext context = projectRepository.findById(projectId)
+                .orElseThrow(() -> new IllegalArgumentException("Proyecto no encontrado: " + projectId));
+
+        context.setStatus("RUNNING");
+        context.setUpdatedAt(LocalDateTime.now());
         context = projectRepository.save(context);
 
-        // Disparar la tubería agéntica (comienza por la fase ANALYSIS invocando a @po-agent)
-        ProjectContext result = orchestrateUseCase.orchestrate(context);
-        return ResponseEntity.ok(result);
+        // Disparar la orquestación en segundo plano (hilo virtual asíncrono)
+        orchestrateUseCase.orchestrateAsync(projectId);
+
+        return ResponseEntity.accepted().body(context);
+    }
+
+    /**
+     * Endpoint heredado/compatible para arrancar un flujo creando un proyecto e iniciando orquestación asíncrona.
+     */
+    @PostMapping("/orchestrate")
+    @Operation(summary = "Crear un contexto e iniciar el pipeline de agentes asíncronamente")
+    public ResponseEntity<ProjectContext> orchestrateProjectLegacy(@RequestBody OrchestrateRequest request) {
+        ProjectContext context = ProjectContext.builder()
+                .id(UUID.randomUUID())
+                .name(request.name())
+                .description(request.description())
+                .repositoryUrl(request.repositoryUrl())
+                .currentPhase("ANALYSIS")
+                .status("RUNNING")
+                .phaseOutputs(new HashMap<>())
+                .rejectionCount(0)
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .build();
+
+        context = projectRepository.save(context);
+
+        // Disparar la orquestación en segundo plano
+        orchestrateUseCase.orchestrateAsync(context.getId());
+
+        return ResponseEntity.accepted().body(context);
+    }
+
+    /**
+     * Endpoint para pausar la orquestación de un proyecto en ejecución.
+     */
+    @PostMapping("/{projectId}/pause")
+    @Operation(summary = "Pausar la ejecución del flujo del proyecto")
+    public ResponseEntity<ProjectContext> pauseProject(@PathVariable UUID projectId) {
+        ProjectContext context = projectRepository.findById(projectId)
+                .orElseThrow(() -> new IllegalArgumentException("Proyecto no encontrado: " + projectId));
+
+        context.setStatus("PAUSED");
+        context.setUpdatedAt(LocalDateTime.now());
+        context = projectRepository.save(context);
+
+        return ResponseEntity.ok(context);
+    }
+
+    /**
+     * Endpoint para reiniciar el estado y salidas del proyecto a la fase inicial.
+     */
+    @PostMapping("/{projectId}/reset")
+    @Operation(summary = "Reiniciar de cero el estado del proyecto y sus artefactos generados")
+    public ResponseEntity<ProjectContext> resetProject(@PathVariable UUID projectId) {
+        ProjectContext context = projectRepository.findById(projectId)
+                .orElseThrow(() -> new IllegalArgumentException("Proyecto no encontrado: " + projectId));
+
+        context.setCurrentPhase("ANALYSIS");
+        context.setStatus("IDLE");
+        context.setRejectionCount(0);
+        context.setPhaseOutputs(new HashMap<>());
+        context.setUpdatedAt(LocalDateTime.now());
+        context = projectRepository.save(context);
+
+        return ResponseEntity.ok(context);
     }
 
     /**
